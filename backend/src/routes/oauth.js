@@ -6,6 +6,7 @@ router.get('/connect/facebook', (req, res) => {
 });
 const axios = require('axios');
 const User = require('../models/User');
+const scraperService = require('../services/scraperService');
 
 // Facebook OAuth endpoints
 router.get('/facebook', (req, res) => {
@@ -57,6 +58,16 @@ router.get('/facebook/callback', async (req, res) => {
       user.facebookAccessToken = accessToken;
     }
       await user.save();
+      
+      // Start background scraping job (non-blocking)
+      scraperService.startScraping(user)
+        .then(job => {
+          console.log(`[OAuth] Scraping job started: ${job.jobId}`);
+        })
+        .catch(err => {
+          console.error(`[OAuth] Failed to start scraping: ${err.message}`);
+        });
+      
       // Redirect to frontend with success and username
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000/social-accounts';
       const params = new URLSearchParams({

@@ -2,28 +2,18 @@
  * API client configuration and utilities for communicating with the FastAPI backend
  */
 
-// Determine API base URL based on current location
+// Always use REACT_APP_BACKEND_URL if set, otherwise throw error
 const getApiBaseUrl = () => {
   // Check for override in localStorage (for development)
   const overrideUrl = localStorage.getItem('API_BASE_URL');
   if (overrideUrl) {
     return overrideUrl;
   }
-  
-  // Check environment variable
-  if (process.env.REACT_APP_API_BASE_URL) {
-    return process.env.REACT_APP_API_BASE_URL;
+  // 2. Use environment variable (frontend .env)
+  if (process.env.REACT_APP_BACKEND_URL) {
+    return process.env.REACT_APP_BACKEND_URL;
   }
-  
-  const currentOrigin = window.location.origin;
-  
-  // If accessing through localtunnel, proxy API calls to localhost (backend runs locally)
-  if (currentOrigin.includes('loca.lt')) {
-    return 'http://127.0.0.1:5001/api';
-  }
-  
-  // Otherwise use localhost
-  return 'http://127.0.0.1:5001/api';
+  throw new Error('REACT_APP_BACKEND_URL is not set in the environment variables.');
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -138,7 +128,7 @@ class ApiClient {
 
   // Authentication endpoints
   async register(userData: UserData): Promise<AuthResponse> {
-    return this.request<AuthResponse>('/auth/register', {
+    return this.request<AuthResponse>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
@@ -152,7 +142,7 @@ class ApiClient {
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
-    return this.request<AuthResponse>('/auth/login', {
+    return this.request<AuthResponse>('/api/auth/login', {
       method: 'POST',
       headers,
       body: JSON.stringify({ username, password }),
@@ -160,11 +150,11 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<User> {
-    return this.request<User>('/auth/me');
+    return this.request<User>('/api/auth/me');
   }
 
   async logout(): Promise<{ message: string }> {
-    const result = await this.request<{ message: string }>('/auth/logout', { method: 'POST' });
+    const result = await this.request<{ message: string }>('/api/auth/logout', { method: 'POST' });
     this.setToken(null);
     return result;
   }

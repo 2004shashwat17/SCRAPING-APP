@@ -38,6 +38,11 @@ app.use('/api/auth', authRoutes);
 // OAuth routes
 const oauthRoutes = require('./routes/oauth');
 app.use('/api/oauth', oauthRoutes);
+
+// Scraper routes
+const scraperRoutes = require('./routes/scraper');
+app.use('/api/scraper', scraperRoutes);
+
 // TODO: Add posts, dashboard, settings routes
 
 app.listen(PORT, () => {

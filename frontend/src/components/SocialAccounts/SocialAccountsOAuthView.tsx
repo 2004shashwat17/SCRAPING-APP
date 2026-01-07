@@ -152,7 +152,7 @@ const SocialAccountsOAuthView: React.FC = () => {
     setError(null);
     // For Facebook, redirect directly to backend OAuth endpoint
     if (platform === 'facebook') {
-      window.location.href = `${getApiBaseUrl().replace('/api/v1', '')}/oauth/connect/facebook`;
+      window.location.href = `${getApiBaseUrl()}/api/oauth/connect/facebook`;
       return;
     }
     // ...existing code for other platforms if needed...
