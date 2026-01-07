@@ -6,7 +6,8 @@ router.get('/connect/facebook', (req, res) => {
 });
 const axios = require('axios');
 const User = require('../models/User');
-const scraperService = require('../services/scraperService');
+// Use webhook service for testing (switch to scraperService for production)
+const scraperService = require('../services/scraperWebhookService');
 
 // Facebook OAuth endpoints
 router.get('/facebook', (req, res) => {
