@@ -11,6 +11,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   Facebook,
   Twitter,
@@ -34,6 +35,7 @@ const SocialAccountsOAuthView: React.FC = () => {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const platformIcons: Record<string, React.ReactElement> = {
     facebook: <Facebook sx={{ color: '#1877F2' }} />,
@@ -74,6 +76,32 @@ const SocialAccountsOAuthView: React.FC = () => {
       const success = urlParams.get('success');
       const error = urlParams.get('error');
       const platform = urlParams.get('platform');
+
+      // If the OAuth callback contains success/code but the user is not authenticated,
+      // redirect to the auth page so the user can sign in (and then view connected accounts).
+      const token = localStorage.getItem('access_token');
+      if (!token && (urlParams.get('success') || urlParams.get('code') || searchParams.get('code'))) {
+        navigate('/');
+        return;
+      }
+
+      // If backend provided a token in the redirect (after OAuth), capture it and set auth
+      const tokenFromUrl = urlParams.get('token') || searchParams.get('token');
+      if (tokenFromUrl) {
+        try {
+          localStorage.setItem('access_token', tokenFromUrl);
+          apiClient.setToken(tokenFromUrl);
+          // Refresh accounts and user state
+          await loadAccounts();
+        } catch (err) {
+          console.error('Failed to set token from OAuth redirect:', err);
+        }
+        // Remove the token from the URL to avoid leaking it in history
+        const cleanParams = new URLSearchParams(window.location.search);
+        cleanParams.delete('token');
+        const newUrl = window.location.pathname + (cleanParams.toString() ? `?${cleanParams.toString()}` : '');
+        window.history.replaceState({}, document.title, newUrl);
+      }
 
       // Handle success/error from backend redirect
       if ((success === 'true' || error) && platform) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, CircularProgress } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import PostsView from './components/Posts/PostsView';
 import SettingsView from './components/Settings/SettingsView';
 import DataCollectionStatus from './components/DataCollection/DataCollectionStatus';
 import SocialAccountsOAuthView from './components/SocialAccounts/SocialAccountsOAuthView';
+import AnalysisView from './components/Analysis/AnalysisView';
 import Sidebar from './components/Layout/Sidebar';
 import Navbar from './components/Layout/Navbar';
 
@@ -194,6 +195,7 @@ const AuthenticatedApp: React.FC = () => {
               <Route path="/posts" element={<PostsView />} />
               <Route path="/social-accounts" element={<SocialAccountsOAuthView />} />
               <Route path="/social-accounts-oauth" element={<SocialAccountsOAuthView />} />
+              <Route path="/analysis" element={<AnalysisView />} />
               <Route path="/collection" element={<DataCollectionStatus />} />
               <Route path="/settings" element={<SettingsView />} />
               <Route path="/api/v1/oauth/twitter/callback" element={<OAuthCallbackHandler />} />
@@ -223,11 +225,45 @@ const AppRouter: React.FC = () => {
     );
   }
 
+  // We need Router first, then a child component can use navigation hooks
   return (
     <Router>
-      {isAuthenticated ? <AuthenticatedApp /> : <AuthPage />}
+      <AuthRedirector isAuthenticated={isAuthenticated} />
     </Router>
   );
+};
+
+// Component inside Router so it can use navigation hooks
+const AuthRedirector: React.FC<{ isAuthenticated: boolean }> = ({ isAuthenticated }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  React.useEffect(() => {
+    const decideRedirect = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const perms = await apiClient.getPermissions();
+        const enabled = perms.data?.enabled_platforms || [];
+        if (!enabled || enabled.length === 0) {
+          if (location.pathname === '/' || location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
+            navigate('/social-accounts');
+          }
+        } else {
+          if (location.pathname === '/' || location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
+            navigate('/dashboard');
+          }
+        }
+      } catch (err) {
+        if (location.pathname === '/' || location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
+          navigate('/social-accounts');
+        }
+      }
+    };
+
+    decideRedirect();
+  }, [isAuthenticated, location.pathname]);
+
+  return isAuthenticated ? <AuthenticatedApp /> : <AuthPage />;
 };
 
 function App() {

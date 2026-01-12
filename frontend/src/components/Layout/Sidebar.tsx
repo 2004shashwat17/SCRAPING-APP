@@ -19,6 +19,7 @@ import {
   Settings as SettingsIcon,
   DataObject as DataIcon,
   AccountCircle as SocialIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -31,6 +32,7 @@ const DRAWER_WIDTH = 240;
 
 const menuItems = [
   { text: 'Social Accounts', icon: <SocialIcon />, path: '/social-accounts' },
+  { text: 'Analysis', icon: <AnalyticsIcon />, path: '/analysis' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ open }) => {

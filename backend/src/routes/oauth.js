@@ -5,6 +5,7 @@ router.get('/connect/facebook', (req, res) => {
   res.redirect('/api/oauth/facebook');
 });
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 // Use webhook service for testing (switch to scraperService for production)
 const scraperService = require('../services/scraperWebhookService');
@@ -69,12 +70,14 @@ router.get('/facebook/callback', async (req, res) => {
           console.error(`[OAuth] Failed to start scraping: ${err.message}`);
         });
       
-      // Redirect to frontend with success and username
+      // Create a JWT for frontend authentication and redirect with it
+      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000/social-accounts';
       const params = new URLSearchParams({
         success: 'true',
         platform: 'facebook',
         username: user.username || '',
+        token,
       });
       return res.redirect(`${frontendUrl}?${params.toString()}`);
   } catch (err) {

@@ -104,7 +104,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(null);
       setError(null);
       apiClient.setToken(null);
-      localStorage.removeItem('auth_token');
+      // Ensure we remove the stored access token
+      localStorage.removeItem('access_token');
     }
   };
 

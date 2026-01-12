@@ -7,6 +7,11 @@ const express = require('express');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+
+// Optional ML service integration: set ML_SERVICE_URL and ML_TOKEN in env
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || null;
+const ML_TOKEN = process.env.ML_TOKEN || null;
 
 const app = express();
 app.use(express.json());
@@ -195,6 +200,30 @@ function checkContainerStatus(jobId) {
       console.log(`\n✅ Container ${job.containerName} finished!`);
       console.log(`📁 Output saved to: ${job.outputDir}`);
       job.status = 'completed';
+
+      // Optional: send CSV to ML service if configured
+      if (ML_SERVICE_URL) {
+        const csvPath = path.join(job.outputDir, 'facebook_integrated_output.csv');
+        if (fs.existsSync(csvPath)) {
+          console.log(`🔁 Sending CSV to ML service: ${ML_SERVICE_URL}`);
+          const headers = { 'Content-Type': 'application/json' };
+          if (ML_TOKEN) headers['X-ML-TOKEN'] = ML_TOKEN;
+
+          axios.post(ML_SERVICE_URL, { csv_path: csvPath, userId: job.userId }, { headers })
+            .then(resp => {
+              console.log('✅ ML result received');
+              try {
+                fs.writeFileSync(path.join(job.outputDir, 'ml_result.json'), JSON.stringify(resp.data, null, 2));
+                console.log('💾 ML result saved to ml_result.json');
+              } catch (e) {
+                console.error('❌ Failed to save ML result:', e.message);
+              }
+            })
+            .catch(err => console.error('❌ ML request failed:', err.message));
+        } else {
+          console.log('⚠️ No CSV found to send to ML service');
+        }
+      }
     }
   });
 }

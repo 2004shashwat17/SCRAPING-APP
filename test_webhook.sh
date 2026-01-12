@@ -1,7 +1,8 @@
 #!/bin/bash
 # Test script to simulate backend calling webhook
 
-WEBHOOK_URL="http://localhost:3001/webhook/start-scraping"
+WEBHOOK_URL="${WEBHOOK_URL:-http://localhost:3001/webhook/start-scraping}"
+ML_SERVICE_URL="${ML_SERVICE_URL:-http://localhost:5000/predict}"
 
 # Test data
 USER_ID="test_user_123"
@@ -29,3 +30,13 @@ echo ""
 echo ""
 echo "✅ Test request sent!"
 echo "Check the webhook server console for output."
+
+# Optional: call ML service directly (set RUN_ML=1 to enable)
+CSV_PATH="scraper_output/${USER_ID}/facebook_integrated_output.csv"
+if [ "$RUN_ML" = "1" ]; then
+  echo "🔁 Calling ML service at: $ML_SERVICE_URL"
+  curl -X POST "$ML_SERVICE_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"csv_path\": \"$CSV_PATH\", \"userId\": \"$USER_ID\"}"
+  echo ""
+fi

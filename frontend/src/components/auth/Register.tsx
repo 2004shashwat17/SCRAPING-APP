@@ -18,6 +18,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { Shield, UserPlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -138,6 +139,8 @@ const Register: React.FC<RegisterProps> = ({ onToggleMode }) => {
     return Object.keys(errors).length === 0;
   };
 
+  const navigate = useNavigate();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -148,7 +151,8 @@ const Register: React.FC<RegisterProps> = ({ onToggleMode }) => {
     try {
       const { confirmPassword, ...userData } = formData;
       await register(userData);
-      // Navigation will be handled by the parent component checking auth state
+      // After registration, always redirect to social accounts so user can connect Facebook
+      navigate('/social-accounts');
     } catch (error) {
       // Error is handled by the auth context
     }

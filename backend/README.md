@@ -35,3 +35,20 @@ This backend is designed for the existing frontend app, using Node.js, Express, 
 - Implement route files for auth, posts, dashboard, settings
 - Add controllers and models as needed
 - Integrate with frontend
+
+## ML service integration (optional)
+
+When a scraper finishes and writes `scraper_output/<userId>/...csv`, you can either have the scraper call the ML service directly (recommended for speed) or have the backend call it when the job status becomes `completed`.
+
+Example: call ML service directly
+
+```bash
+curl -X POST http://ml-service:5000/predict \
+   -H "Content-Type: application/json" \
+   -H "X-ML-TOKEN: ${ML_TOKEN}" \
+   -d '{"csv_path":"scraper_output/test_user_123/facebook_integrated_output.csv","userId":"test_user_123"}'
+```
+
+The ML service should return a JSON result which the backend can save in the database and mark the analysis status = DONE.
+
+Security: require a shared token via `X-ML-TOKEN` header (or use mTLS / internal networking) so only authorized callers can request predictions.

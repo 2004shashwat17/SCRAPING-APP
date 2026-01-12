@@ -18,6 +18,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { Shield, LogIn as LoginIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface LoginProps {
   onToggleMode: () => void;
@@ -78,6 +79,7 @@ interface LoginProps {
 
 const Login: React.FC<LoginProps> = ({ onToggleMode }) => {
   const { login, loading, error, clearError } = useAuth();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -96,7 +98,8 @@ const Login: React.FC<LoginProps> = ({ onToggleMode }) => {
     e.preventDefault();
     try {
       await login(formData.username, formData.password);
-      // Navigation will be handled by the parent component checking auth state
+      // After login, always redirect user to social accounts page to connect social auth (Facebook)
+      navigate('/social-accounts');
     } catch (error) {
       // Error is handled by the auth context
     }
