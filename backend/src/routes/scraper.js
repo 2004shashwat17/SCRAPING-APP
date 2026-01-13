@@ -32,4 +32,94 @@ router.post('/stop/:jobId', async (req, res) => {
   }
 });
 
+// Get dashboard statistics from EDA CSV
+router.get('/dashboard/stats/:userId', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const csv = require('csv-parser');
+    
+    const userId = req.params.userId;
+    const scraperOutputDir = path.join(__dirname, '..', '..', '..', 'scraper_output', userId);
+    const edaFile = path.join(scraperOutputDir, `eda_${req.query.username || 'shaswat'}.csv`);
+
+    // Check if file exists
+    if (!fs.existsSync(edaFile)) {
+      return res.status(404).json({ error: 'EDA file not found for this user' });
+    }
+
+    const posts = [];
+    const engagers = {};
+    const locations = {};
+
+    // Parse CSV
+    fs.createReadStream(edaFile)
+      .pipe(csv())
+      .on('data', (row) => {
+        posts.push(row);
+        
+        // Parse locations
+        if (row.post_location && row.post_location.trim()) {
+          const location = row.post_location.trim();
+          locations[location] = (locations[location] || 0) + 1;
+        }
+        
+        // Parse engagers (commenters and likers)
+        if (row.who_commented && row.who_commented.trim()) {
+          const commenters = row.who_commented.split(',');
+          commenters.forEach(person => {
+            const name = person.trim();
+            if (name) {
+              engagers[name] = (engagers[name] || 0) + 1;
+            }
+          });
+        }
+        
+        if (row.who_liked && row.who_liked.trim()) {
+          const likers = row.who_liked.split(',');
+          likers.forEach(person => {
+            const name = person.trim();
+            if (name) {
+              engagers[name] = (engagers[name] || 0) + 1;
+            }
+          });
+        }
+      })
+      .on('end', () => {
+        // Calculate statistics
+        const totalPosts = posts.length;
+        const totalLocations = Object.keys(locations).length;
+        
+        // Get top engagers
+        const topEngagers = Object.entries(engagers)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, count]) => ({ name, count }));
+        
+        // Get location data for heatmap
+        const locationData = Object.entries(locations).map(([name, count]) => ({
+          name,
+          count
+        }));
+        
+        res.json({
+          statistics: {
+            totalPosts,
+            totalLocations,
+            locations: locationData
+          },
+          engagement: {
+            topEngagers
+          },
+          locations: locationData
+        });
+      })
+      .on('error', (error) => {
+        res.status(500).json({ error: error.message });
+      });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

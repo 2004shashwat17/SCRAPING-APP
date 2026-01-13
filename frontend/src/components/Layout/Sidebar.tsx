@@ -16,6 +16,7 @@ import {
   Security as ThreatIcon,
   AccountCircle as SocialIcon,
   Analytics as AnalyticsIcon,
+  Dashboard as DashboardIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -28,6 +29,7 @@ const DRAWER_WIDTH = 240;
 
 const menuItems = [
   { text: 'Social Accounts', icon: <SocialIcon />, path: '/social-accounts' },
+  { text: 'EDA Dashboard', icon: <DashboardIcon />, path: '/eda-dashboard' },
   { text: 'Analysis', icon: <AnalyticsIcon />, path: '/analysis' },
 ];
 

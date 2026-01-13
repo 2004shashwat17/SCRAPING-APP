@@ -235,6 +235,12 @@ class ApiClient {
     });
   }
 
+  // Get EDA dashboard statistics
+  async getEdaDashboardStats(userId: string, username?: string): Promise<any> {
+    const queryParams = username ? `?username=${username}` : '';
+    return this.request(`/api/scraper/dashboard/stats/${userId}${queryParams}`);
+  }
+
   // Convenience methods for HTTP verbs
   async get<T>(endpoint: string): Promise<{ data: T }> {
     const data = await this.request<T>(endpoint);
