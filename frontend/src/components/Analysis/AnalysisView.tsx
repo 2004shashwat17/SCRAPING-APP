@@ -55,22 +55,26 @@ const locationPoints = [
   { lat: 19.0730, lng: 72.8747, intensity: 0.6 },
 ];
 
-const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string }> = ({ children, gradient }) => {
+const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string; priority?: boolean }> = ({ children, gradient, priority }) => {
   return (
     <Card
       sx={{
-        background: gradient || 'rgba(30, 41, 59, 0.4)',
+        background: gradient || 'rgba(30, 41, 59, 0.85)',
         backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(139, 92, 246, 0.2)',
+        border: '1px solid rgba(139, 92, 246, 0.4)',
         borderRadius: 3,
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+        boxShadow: priority 
+          ? '0 0 0 1px rgba(255,255,255,0.06), 0 8px 24px rgba(0,0,0,0.35)'
+          : '0 8px 32px rgba(0, 0, 0, 0.5)',
         transition: 'all 0.3s ease',
         width: '100%',
         flex: 1,
         '&:hover': {
           transform: 'translateY(-4px)',
-          boxShadow: '0 12px 40px rgba(139, 92, 246, 0.4)',
-          border: '1px solid rgba(139, 92, 246, 0.4)',
+          boxShadow: priority
+            ? '0 0 0 1px rgba(255,255,255,0.1), 0 12px 40px rgba(139, 92, 246, 0.6)'
+            : '0 12px 40px rgba(139, 92, 246, 0.6)',
+          border: '1px solid rgba(139, 92, 246, 0.6)',
         },
       }}
     >
@@ -163,7 +167,7 @@ const Dashboard: React.FC = () => {
         alignItems="center" 
         minHeight="80vh"
         sx={{
-          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)',
         }}
       >
         <CircularProgress size={60} sx={{ color: '#a78bfa' }} />
@@ -183,7 +187,7 @@ const Dashboard: React.FC = () => {
     <Box 
       sx={{ 
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 25%, #4c1d95 50%, #5b21b6 75%, #6d28d9 100%)',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 25%, #312e81 50%, #4c1d95 75%, #5b21b6 100%)',
         backgroundAttachment: 'fixed',
         p: 3,
       }}
@@ -203,8 +207,8 @@ const Dashboard: React.FC = () => {
           <Typography 
             variant="h3" 
             sx={{ 
-              fontWeight: 800, 
-              color: '#fff',
+              fontWeight: 900, 
+              color: '#F5F7FA',
               mb: 0.5,
               textShadow: '0 2px 20px rgba(0, 0, 0, 0.3)',
             }}
@@ -214,7 +218,7 @@ const Dashboard: React.FC = () => {
           <Typography 
             variant="body1" 
             sx={{ 
-              color: 'rgba(255, 255, 255, 0.8)',
+              color: '#C9CED6',
               fontSize: '1.1rem',
             }}
           >
@@ -234,31 +238,31 @@ const Dashboard: React.FC = () => {
             display: 'flex',
             width: '100%',
             '&:hover': {
-              transform: 'scale(1.03)',
+              transform: 'scale(1.03) translateY(-2px)',
             },
           }}
         >
-          <GlassCard gradient="linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.2) 100%)">
+          <GlassCard gradient="linear-gradient(135deg, rgba(99, 102, 241, 0.6) 0%, rgba(139, 92, 246, 0.5) 100%)" priority={true}>
             <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 1 }}>
                 📊 Statistics
               </Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+              <Typography variant="body2" sx={{ color: '#C9CED6', mb: 2, fontSize: '0.9rem' }}>
                 Overview of key metrics and activities
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
-                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)' }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                    📝 Total Posts: <strong style={{ color: '#fff' }}>847</strong>
+                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)' }}>
+                  <Typography variant="body2" sx={{ color: '#C9CED6' }}>
+                    📝 Total Posts: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>847</strong>
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)' }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                    📍 Locations: <strong style={{ color: '#fff' }}>3 cities</strong>
+                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)' }}>
+                  <Typography variant="body2" sx={{ color: '#C9CED6' }}>
+                    📍 Locations: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>3 cities</strong>
                   </Typography>
                 </Box>
                 <Box sx={{ flex: 1 }} />
-                <Typography variant="caption" sx={{ color: '#8b5cf6', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                <Typography variant="caption" sx={{ color: '#a78bfa', textAlign: 'center', mt: 1, fontWeight: 600 }}>
                   Click to see more details →
                 </Typography>
               </Box>
@@ -275,16 +279,16 @@ const Dashboard: React.FC = () => {
             display: 'flex',
             width: '100%',
             '&:hover': {
-              transform: 'scale(1.03)',
+              transform: 'scale(1.03) translateY(-2px)',
             },
           }}
         >
-          <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.2) 100%)">
+          <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.6) 0%, rgba(5, 150, 105, 0.5) 100%)">
             <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 1 }}>
                 👥 Overall Engagement
               </Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+              <Typography variant="body2" sx={{ color: '#C9CED6', mb: 2, fontSize: '0.9rem' }}>
                 Top engagers and their interaction levels
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
@@ -292,17 +296,17 @@ const Dashboard: React.FC = () => {
                   { name: 'Vibhor', engagement: 14 },
                   { name: 'Ravi Saxena', engagement: 11 },
                 ].map((person, index) => (
-                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.85rem' }}>
+                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ color: '#C9CED6', fontSize: '0.85rem' }}>
                       {person.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: '#10b981', fontWeight: 700 }}>
+                    <Typography variant="body2" sx={{ color: '#F5F7FA', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                       {person.engagement}
                     </Typography>
                   </Box>
                 ))}
                 <Box sx={{ flex: 1 }} />
-                <Typography variant="caption" sx={{ color: '#10b981', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                <Typography variant="caption" sx={{ color: '#34d399', textAlign: 'center', mt: 1, fontWeight: 600 }}>
                   +8 more people →
                 </Typography>
               </Box>
@@ -319,16 +323,16 @@ const Dashboard: React.FC = () => {
             display: 'flex',
             width: '100%',
             '&:hover': {
-              transform: 'scale(1.03)',
+              transform: 'scale(1.03) translateY(-2px)',
             },
           }}
         >
-          <GlassCard gradient="linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(219, 39, 119, 0.2) 100%)">
+          <GlassCard gradient="linear-gradient(135deg, rgba(236, 72, 153, 0.6) 0%, rgba(219, 39, 119, 0.5) 100%)">
             <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 1 }}>
                 🎯 Clusters
               </Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+              <Typography variant="body2" sx={{ color: '#C9CED6', mb: 2, fontSize: '0.9rem' }}>
                 Content categories and themes
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
@@ -336,15 +340,15 @@ const Dashboard: React.FC = () => {
                   'Humor & Entertainment',
                   'Travel & Destinations',
                 ].map((cluster, index) => (
-                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', background: '#ec4899' }} />
-                    <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.85rem' }}>
+                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', background: '#f472b6' }} />
+                    <Typography variant="body2" sx={{ color: '#C9CED6', fontSize: '0.85rem' }}>
                       {cluster}
                     </Typography>
                   </Box>
                 ))}
                 <Box sx={{ flex: 1 }} />
-                <Typography variant="caption" sx={{ color: '#ec4899', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                <Typography variant="caption" sx={{ color: '#f472b6', textAlign: 'center', mt: 1, fontWeight: 600 }}>
                   +10 more clusters →
                 </Typography>
               </Box>
@@ -743,24 +747,24 @@ const Dashboard: React.FC = () => {
 
       {/* Activity Clusters */}
       <Box sx={{ mb: 4 }}>
-        <GlassCard gradient="linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(236, 72, 153, 0.2) 100%)">
+        <GlassCard gradient="linear-gradient(135deg, rgba(139, 92, 246, 0.6) 0%, rgba(236, 72, 153, 0.5) 100%)">
           <CardContent>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 3 }}>
               📊 Activity Clusters
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
               {activityClusters.map((cluster, index) => {
                 const gradients = [
-                  'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.1) 100%)',
-                  'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(219, 39, 119, 0.1) 100%)',
-                  'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%)',
-                  'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.1) 100%)',
+                  'linear-gradient(135deg, rgba(139, 92, 246, 0.35) 0%, rgba(99, 102, 241, 0.25) 100%)',
+                  'linear-gradient(135deg, rgba(236, 72, 153, 0.35) 0%, rgba(219, 39, 119, 0.25) 100%)',
+                  'linear-gradient(135deg, rgba(59, 130, 246, 0.35) 0%, rgba(37, 99, 235, 0.25) 100%)',
+                  'linear-gradient(135deg, rgba(16, 185, 129, 0.35) 0%, rgba(5, 150, 105, 0.25) 100%)',
                 ];
                 const hoverGradients = [
-                  'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.15) 100%)',
-                  'linear-gradient(135deg, rgba(236, 72, 153, 0.25) 0%, rgba(219, 39, 119, 0.15) 100%)',
-                  'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.15) 100%)',
-                  'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.15) 100%)',
+                  'linear-gradient(135deg, rgba(139, 92, 246, 0.5) 0%, rgba(99, 102, 241, 0.35) 100%)',
+                  'linear-gradient(135deg, rgba(236, 72, 153, 0.5) 0%, rgba(219, 39, 119, 0.35) 100%)',
+                  'linear-gradient(135deg, rgba(59, 130, 246, 0.5) 0%, rgba(37, 99, 235, 0.35) 100%)',
+                  'linear-gradient(135deg, rgba(16, 185, 129, 0.5) 0%, rgba(5, 150, 105, 0.35) 100%)',
                 ];
                 return (
                 <Box key={index}>
@@ -780,14 +784,21 @@ const Dashboard: React.FC = () => {
                         background: hoverGradients[index % 4],
                         border: '1px solid rgba(139, 92, 246, 0.5)',
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 8px 16px rgba(139, 92, 246, 0.2)',
+                        boxShadow: '0 8px 16px rgba(139, 92, 246, 0.3)',
                       },
                     }}
                   >
-                    <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                    <Typography variant="body1" sx={{ color: '#F5F7FA', fontWeight: 700 }}>
                       {cluster.name}
                     </Typography>
-                    {expandedCluster === cluster.name ? <ExpandLessIcon sx={{ color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ color: '#a78bfa' }} />}
+                    <Box
+                      sx={{
+                        transition: 'transform 0.3s ease',
+                        transform: expandedCluster === cluster.name ? 'rotate(180deg)' : 'rotate(0deg)',
+                      }}
+                    >
+                      {expandedCluster === cluster.name ? <ExpandLessIcon sx={{ color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ color: '#a78bfa' }} />}
+                    </Box>
                   </Box>
                   {expandedCluster === cluster.name && (
                     <Box sx={{ 
@@ -821,9 +832,9 @@ const Dashboard: React.FC = () => {
       {/* Close Friends & Red Flags */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 4 }}>
         {/* Moods */}
-        <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(6, 182, 212, 0.2) 100%)">
+        <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.55) 0%, rgba(6, 182, 212, 0.5) 100%)">
           <CardContent>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 3 }}>
               😊 Moods
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -861,11 +872,11 @@ const Dashboard: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Typography sx={{ fontSize: '1.5rem' }}>{mood.icon}</Typography>
-                      <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                      <Typography variant="body1" sx={{ color: '#F5F7FA', fontWeight: 700 }}>
                         {mood.label}
                       </Typography>
                     </Box>
-                    <Typography variant="h6" sx={{ color: mood.color, fontWeight: 700 }}>
+                    <Typography variant="h6" sx={{ color: mood.color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                       {mood.value}%
                     </Typography>
                   </Box>
@@ -906,29 +917,37 @@ const Dashboard: React.FC = () => {
         </GlassCard>
 
         {/* Red Flags */}
-        <GlassCard gradient="linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(251, 146, 60, 0.2) 100%)">
+        <GlassCard gradient="linear-gradient(135deg, rgba(239, 68, 68, 0.65) 0%, rgba(251, 146, 60, 0.55) 100%)" priority={true}>
           <CardContent>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
-              🚨 Red Flags
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+              <Typography sx={{ fontSize: '1.8rem' }}>⚠️</Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA' }}>
+                Red Flags
+              </Typography>
+            </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {redFlags.map((flag, index) => (
                 <Box
                   key={index}
                   sx={{
-                    p: 2,
+                    p: 2.5,
                     borderRadius: 2,
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    background: 'rgba(239, 68, 68, 0.3)',
+                    border: '1px solid rgba(239, 68, 68, 0.6)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 2,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      background: 'rgba(239, 68, 68, 0.35)',
+                      transform: 'translateY(-2px)',
+                    },
                   }}
                 >
                   <Typography sx={{ fontSize: '1.5rem' }}>
                     {flag.toLowerCase().includes('alcohol') ? '🍺' : '🚨'}
                   </Typography>
-                  <Typography sx={{ color: '#fff', fontWeight: 500 }}>{flag}</Typography>
+                  <Typography sx={{ color: '#F5F7FA', fontWeight: 700 }}>{flag}</Typography>
                 </Box>
               ))}
             </Box>
@@ -937,29 +956,56 @@ const Dashboard: React.FC = () => {
       </Box>
 
       {/* Location Heatmap */}
-      <GlassCard>
+      <GlassCard priority={true}>
         <CardContent>
-          <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 2 }}>
-            📍 Activity Locations Heatmap
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 2 }}>
-            Shows where your child is most active based on post locations
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 0.5 }}>
+                📍 Activity Locations Heatmap
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#C9CED6' }}>
+                Shows where your child is most active based on post locations
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {['Last 7 days', '30 days', 'All time'].map((filter, idx) => (
+                <Chip
+                  key={idx}
+                  label={filter}
+                  onClick={() => {}}
+                  sx={{
+                    background: idx === 2 ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                    color: idx === 2 ? '#a78bfa' : '#C9CED6',
+                    border: idx === 2 ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.2)',
+                    fontWeight: idx === 2 ? 700 : 500,
+                    fontSize: '0.75rem',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      background: 'rgba(139, 92, 246, 0.3)',
+                      color: '#a78bfa',
+                      border: '1px solid rgba(139, 92, 246, 0.5)',
+                    },
+                  }}
+                />
+              ))}
+            </Box>
+          </Box>
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ff0000' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+              <Typography variant="body2" sx={{ color: '#C9CED6', fontWeight: 600 }}>
                 High activity: New Delhi, Mumbai
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ffaa00' }} />
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+              <Typography variant="body2" sx={{ color: '#C9CED6', fontWeight: 600 }}>
                 Moderate activity: Ludhiana
               </Typography>
             </Box>
           </Box>
-          <Box sx={{ height: 400, borderRadius: 2, overflow: 'hidden' }}>
+          <Box sx={{ height: 550, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
             <MapContainer
               center={[26, 76]}
               zoom={5}
