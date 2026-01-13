@@ -23,6 +23,7 @@ import {
   Facebook as FacebookIcon,
   AccountCircle as AccountCircleIcon,
   Edit as EditIcon,
+  CheckCircle,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../services/apiClient';
@@ -268,6 +269,39 @@ const ProfileView: React.FC = () => {
               
               {facebookAccount ? (
                 <Stack spacing={0} divider={<Divider />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(24, 119, 242, 0.1)',
+                        color: '#1877F2',
+                        mr: 3,
+                      }}>
+                        <FacebookIcon />
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                          Facebook Account
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                          {facebookAccount.username || 'Connected'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Chip
+                      label="Connected"
+                      color="success"
+                      size="small"
+                      icon={<CheckCircle />}
+                      sx={{ fontWeight: 600 }}
+                    />
+                  </Box>
+                  
                   <InfoRow 
                     icon={<FacebookIcon sx={{ color: '#1877F2' }} />} 
                     label="Facebook Username" 

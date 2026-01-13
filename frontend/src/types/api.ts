@@ -84,6 +84,11 @@ export interface DataCollectionResponse {
 
 export interface OAuthAccountsResponse {
   accounts: SocialAccount[];
+  user?: {
+    id: string;
+    username: string;
+    avatar?: string;
+  };
 }
 
 export interface OAuthConnectResponse {

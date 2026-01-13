@@ -14,11 +14,13 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
+import Avatar from '@mui/material/Avatar';
 import { apiClient, getApiBaseUrl } from '../../services/apiClient';
 import type { SocialAccount, OAuthAccountsResponse } from '../../types/api';
 
 const SocialAccountsOAuthView: React.FC = () => {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -44,6 +46,7 @@ const SocialAccountsOAuthView: React.FC = () => {
       setLoading(true);
       const response = await apiClient.get<OAuthAccountsResponse>('/oauth/accounts');
       setAccounts(response.data.accounts || []);
+      setCurrentUser(response.data.user || null);
       setError(null); // Clear any previous errors on success
     } catch (err: any) {
       console.error('Error loading accounts:', err);
@@ -187,6 +190,36 @@ const SocialAccountsOAuthView: React.FC = () => {
         <Alert severity="success" sx={{ mb: 3 }}>
           {successMessage}
         </Alert>
+      )}
+
+      {/* User Info Card */}
+      {currentUser && (
+        <Card variant="outlined" sx={{ mb: 3, p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar
+              src={currentUser.avatar}
+              sx={{
+                width: 60,
+                height: 60,
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+              }}
+            >
+              {currentUser.username?.charAt(0).toUpperCase()}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {currentUser.username}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {accounts.length > 0 
+                  ? `${accounts.length} social account${accounts.length > 1 ? 's' : ''} connected`
+                  : 'No social accounts connected yet'}
+              </Typography>
+            </Box>
+          </Box>
+        </Card>
       )}
 
       <Box sx={{ display: 'grid', gap: 3 }}>

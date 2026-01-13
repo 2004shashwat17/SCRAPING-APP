@@ -45,7 +45,14 @@ router.get('/accounts', authenticateToken, async (req, res) => {
       });
     }
     
-    res.json({ accounts });
+    res.json({ 
+      accounts,
+      user: {
+        id: user._id,
+        username: user.username,
+        avatar: user.avatar
+      }
+    });
   } catch (err) {
     console.error('Error fetching accounts:', err);
     res.status(500).json({ message: 'Server error' });
