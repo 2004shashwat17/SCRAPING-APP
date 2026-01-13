@@ -13,6 +13,9 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
+  Select,
+  MenuItem,
+  FormControl,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import {
@@ -83,6 +86,34 @@ const Dashboard: React.FC = () => {
   const [userAvatar] = useState(localStorage.getItem('userAvatar') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4');
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number>(2025);
+
+  // Generate years from 2000 to 3000
+  const years = Array.from({ length: 1001 }, (_, i) => 2000 + i);
+
+  // Generate monthly data based on selected year
+  const getMonthlyData = (year: number) => {
+    // Generate random but consistent data based on year
+    const seed = year;
+    return [
+      { month: 'Jan', posts: 50 + (seed * 7) % 40 },
+      { month: 'Feb', posts: 45 + (seed * 11) % 35 },
+      { month: 'Mar', posts: 60 + (seed * 13) % 45 },
+      { month: 'Apr', posts: 40 + (seed * 17) % 38 },
+      { month: 'May', posts: 55 + (seed * 19) % 42 },
+      { month: 'Jun', posts: 50 + (seed * 23) % 40 },
+      { month: 'Jul', posts: 58 + (seed * 29) % 43 },
+      { month: 'Aug', posts: 62 + (seed * 31) % 45 },
+      { month: 'Sep', posts: 52 + (seed * 37) % 41 },
+      { month: 'Oct', posts: 48 + (seed * 41) % 39 },
+      { month: 'Nov', posts: 44 + (seed * 43) % 37 },
+      { month: 'Dec', posts: 50 + (seed * 47) % 40 },
+    ];
+  };
+
+  const handleYearChange = (event: any) => {
+    setSelectedYear(event.target.value);
+  };
 
   const handleOpenDialog = (dialogType: string) => {
     setOpenDialog(dialogType);
@@ -348,36 +379,218 @@ const Dashboard: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 3, lineHeight: 1.6 }}>
-            Get a complete overview of your child's social media activity. See how many posts they've shared, where they're posting from, and who's engaging most with their content. This helps you understand their online presence and social connections.
+            Get a complete overview of your child's social media activity. See how many posts they've shared, where they're posting from, and when they're most active throughout the year.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            {[
-              { label: 'Total Posts', value: '847', icon: '📝' },
-              { label: 'Locations', value: 'Delhi, Mumbai, Ludhiana', icon: '📍' },
-              { label: 'Most Liked By', value: 'Vibhor (142 likes)', icon: '❤️' },
-              { label: 'Most Commented By', value: 'Ravi Saxena (89 comments)', icon: '💬' },
-              { label: 'Most Shared By', value: 'Neelam Rawat (56 shares)', icon: '🔄' },
-            ].map((stat, index) => (
-              <Box
-                key={index}
-                sx={{
-                  p: 2.5,
-                  borderRadius: 2,
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
-                  <Typography sx={{ fontSize: '1.5rem' }}>{stat.icon}</Typography>
-                  <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
-                    {stat.label}
-                  </Typography>
-                </Box>
-                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, pl: 5.5 }}>
-                  {stat.value}
+            {/* Total Posts */}
+            <Box
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
+                <Typography sx={{ fontSize: '1.5rem' }}>📝</Typography>
+                <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
+                  Total Posts
                 </Typography>
               </Box>
-            ))}
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, pl: 5.5 }}>
+                847
+              </Typography>
+            </Box>
+
+            {/* Locations with Post Count */}
+            <Box
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+                <Typography sx={{ fontSize: '1.5rem' }}>📍</Typography>
+                <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
+                  Locations
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 5.5 }}>
+                {[
+                  { city: 'Delhi', posts: 1 },
+                  { city: 'Jammu', posts: 1 },
+                  { city: 'Dalhousie', posts: 1 },
+                  { city: 'Thailand', posts: 1 },
+                ].map((location, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 500 }}>
+                      {location.city}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        color: '#fff',
+                        fontWeight: 700,
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        px: 2,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      {location.posts} post{location.posts > 1 ? 's' : ''}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
+            {/* Monthly Breakdown */}
+            <Box
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Typography sx={{ fontSize: '1.5rem' }}>📅</Typography>
+                  <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
+                    Monthly Posts - {selectedYear}
+                  </Typography>
+                </Box>
+                <FormControl size="small">
+                  <Select
+                    value={selectedYear}
+                    onChange={handleYearChange}
+                    sx={{
+                      color: '#fff',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: 1,
+                      minWidth: 100,
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'rgba(255, 255, 255, 0.3)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'rgba(255, 255, 255, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'rgba(255, 255, 255, 0.7)',
+                      },
+                      '& .MuiSvgIcon-root': {
+                        color: '#fff',
+                      },
+                    }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 300,
+                          background: 'rgba(30, 41, 59, 0.95)',
+                          backdropFilter: 'blur(20px)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          '& .MuiMenuItem-root': {
+                            color: '#fff',
+                            '&:hover': {
+                              background: 'rgba(139, 92, 246, 0.2)',
+                            },
+                            '&.Mui-selected': {
+                              background: 'rgba(139, 92, 246, 0.3)',
+                              '&:hover': {
+                                background: 'rgba(139, 92, 246, 0.4)',
+                              },
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    {years.map((year) => (
+                      <MenuItem key={year} value={year}>
+                        {year}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5, pl: 5.5 }}>
+                {getMonthlyData(selectedYear).map((monthData, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      p: 1,
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.85rem', fontWeight: 500 }}>
+                      {monthData.month}
+                    </Typography>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>
+                      {monthData.posts}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
+            {/* Yearly Breakdown */}
+            <Box
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                background: 'rgba(255, 255, 255, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+                <Typography sx={{ fontSize: '1.5rem' }}>📆</Typography>
+                <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
+                  Yearly Posts
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 5.5 }}>
+                {[
+                  { year: '2025', posts: 423 },
+                  { year: '2024', posts: 312 },
+                  { year: '2023', posts: 112 },
+                ].map((yearData, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      p: 1.5,
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '1rem' }}>
+                      {yearData.year}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        color: '#fff',
+                        fontWeight: 700,
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        px: 2.5,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '1.1rem',
+                      }}
+                    >
+                      {yearData.posts} posts
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
           </Box>
         </DialogContent>
       </Dialog>
