@@ -82,13 +82,34 @@ const StyledContainer = styled(Box)({
     left: 0,
     right: 0,
     bottom: 0,
-    background: 'radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.2) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.2) 0%, transparent 50%)',
+    backgroundImage: `
+      radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(139, 92, 246, 0.03) 2px, rgba(139, 92, 246, 0.03) 4px),
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 92, 246, 0.03) 2px, rgba(139, 92, 246, 0.03) 4px)
+    `,
+    pointerEvents: 'none',
+  },
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    top: '-50%',
+    left: '-50%',
+    width: '200%',
+    height: '200%',
+    background: 'radial-gradient(circle, rgba(139, 92, 246, 0.06) 1px, transparent 1px)',
+    backgroundSize: '50px 50px',
+    animation: 'floatPattern 25s linear infinite',
     pointerEvents: 'none',
   },
   '@keyframes gradientShift': {
     '0%': { backgroundPosition: '0% 50%' },
     '50%': { backgroundPosition: '100% 50%' },
     '100%': { backgroundPosition: '0% 50%' },
+  },
+  '@keyframes floatPattern': {
+    '0%': { transform: 'translate(0, 0)' },
+    '100%': { transform: 'translate(50px, 50px)' },
   },
 });
 

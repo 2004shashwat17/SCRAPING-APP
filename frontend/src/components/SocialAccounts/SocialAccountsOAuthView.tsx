@@ -44,9 +44,14 @@ const SocialAccountsOAuthView: React.FC = () => {
       setLoading(true);
       const response = await apiClient.get<OAuthAccountsResponse>('/oauth/accounts');
       setAccounts(response.data.accounts || []);
+      setError(null); // Clear any previous errors on success
     } catch (err: any) {
       console.error('Error loading accounts:', err);
-      setError('Failed to load connected accounts');
+      // Only set error if it's not a 401 (unauthorized) or if accounts were expected
+      if (err.response?.status !== 401) {
+        // Don't show error by default, only on actual failures
+        console.log('Could not load accounts:', err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -54,8 +59,6 @@ const SocialAccountsOAuthView: React.FC = () => {
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
-      await loadAccounts();
-
       // use searchParams for callback query params (avoid double-parsing)
 
       const errorParam = searchParams.get('error');
@@ -63,6 +66,14 @@ const SocialAccountsOAuthView: React.FC = () => {
       const state = searchParams.get('state');
       const successParam = searchParams.get('success');
       const platformParam = searchParams.get('platform');
+      const tokenParam = searchParams.get('token');
+
+      // If there's a token in the URL, save it to localStorage
+      if (tokenParam) {
+        localStorage.setItem('access_token', tokenParam);
+        // Trigger auth context refresh
+        window.dispatchEvent(new Event('auth:token_set'));
+      }
 
       // Handle direct OAuth callback (if app redirects directly to frontend)
       if (code && state && !successParam && !errorParam) {
@@ -74,24 +85,29 @@ const SocialAccountsOAuthView: React.FC = () => {
       }
 
       if (successParam === 'true' && platformParam) {
-        // OAuth successful
-        console.log(`OAuth success for ${platformParam}, refreshing accounts...`);
-        await loadAccounts(); // Refresh accounts
+        // OAuth successful - load accounts first
+        await loadAccounts();
+        
         const username = searchParams.get('username');
         const message = username
           ? `${platformParam.charAt(0).toUpperCase() + platformParam.slice(1)} connected successfully as @${username}!`
           : `${platformParam.charAt(0).toUpperCase() + platformParam.slice(1)} connected successfully!`;
         setSuccessMessage(message);
+        
         // Clear success message after 5 seconds
         setTimeout(() => setSuccessMessage(null), 5000);
-        // Clear URL params
+        
+        // Clear URL params to stay on the same page
         window.history.replaceState({}, document.title, window.location.pathname);
         console.log('URL params cleared, staying on social-accounts page');
       } else if (errorParam && platformParam) {
         // OAuth failed
         console.log(`OAuth error for ${platformParam}: ${errorParam}`);
-        setError('Failed to connect');
+        setError(`Failed to connect ${platformParam}`);
         window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        // No OAuth callback, just load accounts normally
+        await loadAccounts();
       }
     };
 
@@ -101,9 +117,13 @@ const SocialAccountsOAuthView: React.FC = () => {
   const handleConnect = (platform: string) => {
     setConnecting(platform);
     setError(null);
-    // For Facebook, redirect directly to backend OAuth endpoint
+    // For Facebook, redirect directly to backend OAuth endpoint with token
     if (platform === 'facebook') {
-      window.location.href = `${getApiBaseUrl()}/api/oauth/connect/facebook`;
+      const token = localStorage.getItem('access_token');
+      const url = token 
+        ? `${getApiBaseUrl()}/oauth/facebook?token=${encodeURIComponent(token)}`
+        : `${getApiBaseUrl()}/oauth/facebook`;
+      window.location.href = url;
       return;
     }
     // ...existing code for other platforms if needed...
@@ -184,24 +204,19 @@ const SocialAccountsOAuthView: React.FC = () => {
                       {connected && account ? (
                         <Box sx={{ mt: 1 }}>
                           <Chip
-                            label={`Connected as ${account.username}`}
+                            label="Connected"
                             color="success"
                             size="small"
                             icon={<CheckCircle />}
                           />
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                            Last sync: {account.last_sync ? new Date(account.last_sync).toLocaleString() : 'Never'}
-                          </Typography>
-                          {account.platform === 'reddit' && (
-                            <Box sx={{ mt: 1 }}>
-                              <Typography variant="body2" color="text.secondary">
-                                Posts: {account.posts_count || 0} | Comments: {account.comments_count || 0} | Saved: {account.saved_count || 0}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                Upvoted: {account.upvoted_count || 0} | Downvoted: {account.downvoted_count || 0} | Hidden: {account.hidden_count || 0}
-                              </Typography>
-                            </Box>
+                          {account.username && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                              {account.username} {account.email && `(${account.email})`}
+                            </Typography>
                           )}
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            Connected: {account.connected_at ? new Date(account.connected_at).toLocaleString() : 'Recently'}
+                          </Typography>
                         </Box>
                       ) : (
                         <Typography variant="body2" color="text.secondary">

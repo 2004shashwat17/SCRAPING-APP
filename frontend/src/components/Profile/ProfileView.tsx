@@ -70,9 +70,13 @@ const ProfileView: React.FC = () => {
       setLoading(true);
       const response = await apiClient.get<OAuthAccountsResponse>('/oauth/accounts');
       setSocialAccounts(response.data.accounts || []);
+      setError(null); // Clear any previous errors
     } catch (err: any) {
       console.error('Error loading social accounts:', err);
-      setError('Failed to load connected accounts');
+      // Don't show error by default, only on actual failures
+      if (err.response?.status !== 401) {
+        console.log('Could not load social accounts:', err.message);
+      }
     } finally {
       setLoading(false);
     }
