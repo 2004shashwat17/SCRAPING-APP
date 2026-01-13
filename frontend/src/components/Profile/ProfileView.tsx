@@ -57,7 +57,7 @@ const ProfileView: React.FC = () => {
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState<string>(
-    localStorage.getItem('userAvatar') || AVATAR_OPTIONS[0]
+    user?.avatar || AVATAR_OPTIONS[0]
   );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -90,13 +90,19 @@ const ProfileView: React.FC = () => {
     setSelectedAvatar(avatar);
   };
 
-  const handleSaveAvatar = () => {
-    localStorage.setItem('userAvatar', selectedAvatar);
-    setAvatarDialogOpen(false);
-    setSuccessMessage('Avatar updated successfully!');
-    setTimeout(() => setSuccessMessage(null), 3000);
-    // Trigger a page refresh to update avatar everywhere
-    window.dispatchEvent(new Event('avatarChanged'));
+  const handleSaveAvatar = async () => {
+    try {
+      await apiClient.updateAvatar(selectedAvatar);
+      setAvatarDialogOpen(false);
+      setSuccessMessage('Avatar updated successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+      // Trigger a page refresh to update avatar everywhere
+      window.dispatchEvent(new Event('avatarChanged'));
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to update avatar:', err);
+      setError('Failed to update avatar');
+    }
   };
 
   const InfoRow: React.FC<{ icon: React.ReactElement; label: string; value: string | undefined }> = ({ icon, label, value }) => (
@@ -177,7 +183,7 @@ const ProfileView: React.FC = () => {
           <Box sx={{ display: 'flex', alignItems: 'flex-end', mb: 3, mt: -5 }}>
             <Box sx={{ position: 'relative' }}>
               <Avatar
-                src={selectedAvatar}
+                src={user?.avatar || selectedAvatar}
                 sx={{
                   width: 100,
                   height: 100,

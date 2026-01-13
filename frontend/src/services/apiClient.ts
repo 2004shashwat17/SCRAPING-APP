@@ -43,6 +43,7 @@ interface User {
   username: string;
   email: string;
   full_name?: string;
+  avatar?: string;
   is_active: boolean;
 }
 
@@ -223,6 +224,14 @@ class ApiClient {
   async triggerDataCollection(): Promise<any> {
     return this.request('/auth/collect-data', {
       method: 'POST',
+    });
+  }
+
+  // Update user avatar
+  async updateAvatar(avatar: string): Promise<any> {
+    return this.request('/auth/avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ avatar }),
     });
   }
 
