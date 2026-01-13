@@ -56,6 +56,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuthStatus();
   }, []);
 
+  // Listen for auth token being set elsewhere (e.g., OAuth redirect) and refresh user
+  useEffect(() => {
+    const onTokenSet = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          apiClient.setToken(token);
+          const userData = await apiClient.getCurrentUser();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Auth refresh failed:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    window.addEventListener('auth:token_set', onTokenSet);
+    return () => window.removeEventListener('auth:token_set', onTokenSet);
+  }, []);
+
   const login = async (username: string, password: string): Promise<AuthResponse> => {
     try {
       setError(null);

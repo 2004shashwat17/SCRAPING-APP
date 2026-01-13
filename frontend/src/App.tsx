@@ -1,11 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, Box, CircularProgress } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import apiClient, { getApiBaseUrl } from './services/apiClient';
+import theme from './theme';
 import AuthPage from './components/auth/AuthPage';
 import SocialMediaPermissionModal from './components/auth/SocialMediaPermissionModal';
 import Dashboard from './components/Dashboard/Dashboard';
@@ -14,6 +15,7 @@ import SettingsView from './components/Settings/SettingsView';
 import DataCollectionStatus from './components/DataCollection/DataCollectionStatus';
 import SocialAccountsOAuthView from './components/SocialAccounts/SocialAccountsOAuthView';
 import AnalysisView from './components/Analysis/AnalysisView';
+import ProfileView from './components/Profile/ProfileView';
 import Sidebar from './components/Layout/Sidebar';
 import Navbar from './components/Layout/Navbar';
 
@@ -42,69 +44,6 @@ const OAuthCallbackHandler: React.FC = () => {
     </Box>
   );
 };
-
-// Create a dark theme for the OSINT platform
-const darkTheme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
-    },
-    secondary: {
-      main: '#dc004e',
-      light: '#f5325c',
-      dark: '#9a0036',
-    },
-    background: {
-      default: '#0a0e1a',
-      paper: '#151b2d',
-    },
-    error: {
-      main: '#f44336',
-    },
-    warning: {
-      main: '#ff9800',
-    },
-    success: {
-      main: '#4caf50',
-    },
-  },
-  typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h1: {
-      fontSize: '2.5rem',
-      fontWeight: 600,
-    },
-    h2: {
-      fontSize: '2rem',
-      fontWeight: 600,
-    },
-    h3: {
-      fontSize: '1.75rem',
-      fontWeight: 600,
-    },
-  },
-  components: {
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          backgroundImage: 'none',
-          backgroundColor: '#1a2332',
-          border: '1px solid #2d3748',
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          backgroundImage: 'none',
-        },
-      },
-    },
-  },
-});
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -198,6 +137,7 @@ const AuthenticatedApp: React.FC = () => {
               <Route path="/analysis" element={<AnalysisView />} />
               <Route path="/collection" element={<DataCollectionStatus />} />
               <Route path="/settings" element={<SettingsView />} />
+              <Route path="/profile" element={<ProfileView />} />
               <Route path="/api/v1/oauth/twitter/callback" element={<OAuthCallbackHandler />} />
             </Routes>
           </Box>
@@ -261,7 +201,7 @@ const AuthRedirector: React.FC<{ isAuthenticated: boolean }> = ({ isAuthenticate
     };
 
     decideRedirect();
-  }, [isAuthenticated, location.pathname]);
+  }, [isAuthenticated, location.pathname, navigate]);
 
   return isAuthenticated ? <AuthenticatedApp /> : <AuthPage />;
 };
@@ -269,7 +209,7 @@ const AuthRedirector: React.FC<{ isAuthenticated: boolean }> = ({ isAuthenticate
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={darkTheme}>
+      <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
           <AppRouter />

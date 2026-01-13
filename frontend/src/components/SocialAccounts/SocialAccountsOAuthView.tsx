@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿/* eslint-disable unicode-bom */
+/* Social accounts OAuth view */
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Card,
   CardContent,
-  CardHeader,
   Typography,
   Button,
   Chip,
@@ -12,20 +13,9 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import {
-  Facebook,
-  Twitter,
-  Reddit,
-  Refresh,
-  Delete,
-  CheckCircle,
-} from '@mui/icons-material';
+import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
 import { apiClient, getApiBaseUrl } from '../../services/apiClient';
-import type {
-  SocialAccount,
-  OAuthAccountsResponse,
-  OAuthConnectResponse
-} from '../../types/api';
+import type { SocialAccount, OAuthAccountsResponse } from '../../types/api';
 
 const SocialAccountsOAuthView: React.FC = () => {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -66,80 +56,13 @@ const SocialAccountsOAuthView: React.FC = () => {
     const handleOAuthCallback = async () => {
       await loadAccounts();
 
-      // Debug: Log current URL and all parameters
-      console.log('🌐 Current page URL:', window.location.href);
-      console.log('🌐 Search params:', window.location.search);
-      console.log('🌐 Hash:', window.location.hash);
+      // use searchParams for callback query params (avoid double-parsing)
 
-      // Check for Auth0 callback (from URL parameters after backend redirect)
-      const urlParams = new URLSearchParams(window.location.search);
-      const success = urlParams.get('success');
-      const error = urlParams.get('error');
-      const platform = urlParams.get('platform');
-
-      // If the OAuth callback contains success/code but the user is not authenticated,
-      // redirect to the auth page so the user can sign in (and then view connected accounts).
-      const token = localStorage.getItem('access_token');
-      if (!token && (urlParams.get('success') || urlParams.get('code') || searchParams.get('code'))) {
-        navigate('/');
-        return;
-      }
-
-      // If backend provided a token in the redirect (after OAuth), capture it and set auth
-      const tokenFromUrl = urlParams.get('token') || searchParams.get('token');
-      if (tokenFromUrl) {
-        try {
-          localStorage.setItem('access_token', tokenFromUrl);
-          apiClient.setToken(tokenFromUrl);
-          // Refresh accounts and user state
-          await loadAccounts();
-        } catch (err) {
-          console.error('Failed to set token from OAuth redirect:', err);
-        }
-        // Remove the token from the URL to avoid leaking it in history
-        const cleanParams = new URLSearchParams(window.location.search);
-        cleanParams.delete('token');
-        const newUrl = window.location.pathname + (cleanParams.toString() ? `?${cleanParams.toString()}` : '');
-        window.history.replaceState({}, document.title, newUrl);
-      }
-
-      // Handle success/error from backend redirect
-      if ((success === 'true' || error) && platform) {
-        if (success === 'true') {
-          const username = urlParams.get('username');
-          const message = username
-            ? `${platform.charAt(0).toUpperCase() + platform.slice(1)} connected successfully as @${username}!`
-            : `${platform.charAt(0).toUpperCase() + platform.slice(1)} connected successfully!`;
-          setSuccessMessage(message);
-          await loadAccounts();
-        } else if (error) {
-          setError(`Failed to connect ${platform}: ${urlParams.get('details') || error}`);
-        }
-
-        // Clean up URL parameters
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        return;
-      }
-
-      // Handle regular OAuth callback
       const errorParam = searchParams.get('error');
       const code = searchParams.get('code');
       const state = searchParams.get('state');
       const successParam = searchParams.get('success');
       const platformParam = searchParams.get('platform');
-
-      // Add detailed logging for debugging
-      const allParams = Object.fromEntries(searchParams.entries());
-      console.log('🔍 All URL parameters:', allParams);
-      console.log('🔍 OAuth callback detected:', {
-        success: successParam,
-        error: errorParam,
-        platform: platformParam,
-        code: code,
-        state: state,
-        currentURL: window.location.href
-      });
 
       // Handle direct OAuth callback (if app redirects directly to frontend)
       if (code && state && !successParam && !errorParam) {
@@ -173,7 +96,7 @@ const SocialAccountsOAuthView: React.FC = () => {
     };
 
     handleOAuthCallback();
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   const handleConnect = (platform: string) => {
     setConnecting(platform);

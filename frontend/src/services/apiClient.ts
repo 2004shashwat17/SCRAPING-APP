@@ -89,6 +89,12 @@ class ApiClient {
     } else {
       localStorage.removeItem('access_token');
     }
+    // Notify other parts of the app that a token was set/cleared
+    try {
+      window.dispatchEvent(new Event('auth:token_set'));
+    } catch (e) {
+      // ignore in non-browser environments
+    }
   }
 
   private getHeaders(): Record<string, string> {

@@ -72,23 +72,27 @@ router.get('/facebook/callback', async (req, res) => {
       
       // Create a JWT for frontend authentication and redirect with it
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000/social-accounts';
+      const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const frontendUrl = `${frontendBase}/social-accounts`;
       const params = new URLSearchParams({
         success: 'true',
         platform: 'facebook',
         username: user.username || '',
         token,
       });
-      return res.redirect(`${frontendUrl}?${params.toString()}`);
+      const redirectUrl = `${frontendUrl}?${params.toString()}`;
+      console.log('[OAuth] Redirecting to frontend with token:', { userId: user._id, redirectUrl });
+      return res.redirect(redirectUrl);
   } catch (err) {
       console.error('Facebook OAuth error:', err.response?.data || err.message || err);
       // Redirect to frontend with error
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000/social-accounts';
-      const params = new URLSearchParams({
-        error: 'facebook',
-        details: err.response?.data?.error?.message || err.message || 'Facebook OAuth failed',
-      });
-      return res.redirect(`${frontendUrl}?${params.toString()}`);
+    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const frontendUrl = `${frontendBase}/social-accounts`;
+    const params = new URLSearchParams({
+      error: 'facebook',
+      details: err.response?.data?.error?.message || err.message || 'Facebook OAuth failed',
+    });
+    return res.redirect(`${frontendUrl}?${params.toString()}`);
   }
 });
 

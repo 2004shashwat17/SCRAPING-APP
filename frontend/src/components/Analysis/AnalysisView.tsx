@@ -1,10 +1,58 @@
-import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import Avatar from '@mui/material/Avatar';
+import React, { useState, useEffect } from 'react';
+import {
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  Chip,
+  useTheme,
+  CircularProgress,
+  Alert,
+  Avatar,
+  LinearProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import {
+  TrendingUp as TrendingUpIcon,
+  People as PeopleIcon,
+  Warning as WarningIcon,
+  CheckCircle as CheckCircleIcon,
+  Schedule as ScheduleIcon,
+  LocalFireDepartment as FireIcon,
+  SentimentSatisfied as HappyIcon,
+  SentimentDissatisfied as SadIcon,
+  Mood as MoodIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+} from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from 'recharts';
+import { MapContainer, TileLayer, Circle, Tooltip as MapTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Fix for default marker icons in react-leaflet
+import apiClient from '../../services/apiClient';
+
+// Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
@@ -12,367 +60,883 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-interface Cluster {
-  name: string;
-  numPosts: number;
-  topPost: string;
-}
+// Mock enhanced data
+const activityTrendData = [
+  { date: 'Mon', posts: 45, engagement: 120, sentiment: 85 },
+  { date: 'Tue', posts: 52, engagement: 145, sentiment: 78 },
+  { date: 'Wed', posts: 38, engagement: 98, sentiment: 90 },
+  { date: 'Thu', posts: 65, engagement: 178, sentiment: 72 },
+  { date: 'Fri', posts: 58, engagement: 156, sentiment: 88 },
+  { date: 'Sat', posts: 72, engagement: 198, sentiment: 95 },
+  { date: 'Sun', posts: 48, engagement: 132, sentiment: 82 },
+];
 
-interface Friend {
-  name: string;
-  initial: string;
-  sentiment: 'happy' | 'sad' | 'neutral' | 'angry';
-}
+const topTopics = [
+  { name: 'Friends & Social', count: 45, color: '#8b5cf6', icon: '👥' },
+  { name: 'School & Study', count: 32, color: '#ec4899', icon: '📚' },
+  { name: 'Sports & Games', count: 28, color: '#f59e0b', icon: '⚽' },
+  { name: 'Entertainment', count: 24, color: '#10b981', icon: '🎮' },
+];
 
-interface CloseFriend {
-  name: string;
-  engagement: number;
-}
+const activityClusters = [
+  { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
+  { name: 'Threats & Controversies ➤', numPosts: 8, topPost: 'Breaking news today' },
+  { name: 'Mountain Adventure ➤', numPosts: 10, topPost: 'Cheers to some new adventures' },
+  { name: 'Social Media & Networking ➤', numPosts: 7, topPost: 'Completed 5 Years With Facebook' },
+];
 
-interface AnalysisData {
-  name: string;
-  profileImage?: string;
-  clusters: Cluster[];
-  sentiments: {
-    happy: number;
-    sad: number;
-    angry: number;
-    neutral: number;
-  };
-  redFlags: string[];
-  friends: Friend[];
-  closeFriends: CloseFriend[];
-  location: {
-    name: string;
-    coordinates: [number, number];
-  };
-}
+const closeFriends = [
+  { name: 'Vibhor', engagement: 14 },
+  { name: 'Ravi Saxena', engagement: 11 },
+  { name: 'Neelam Rawat', engagement: 7 },
+];
 
-// Mock data
-const mockData: AnalysisData = {
-  name: 'Shashwat Saxena',
-  clusters: [
-    { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
-    { name: 'Threats & Controversies ➤', numPosts: 8, topPost: 'Breaking news today' },
-    { name: 'Mountain Adventure ➤', numPosts: 10, topPost: 'Cheers to some new adventures' },
-    { name: 'Social Media & Networking ➤', numPosts: 7, topPost: 'Completed 5 Years With Facebook' },
-  ],
-  sentiments: {
-    happy: 65,
-    sad: 10,
-    angry: 5,
-    neutral: 20,
-  },
-  redFlags: ['Late night posts', 'Alcohol mentions'],
-  friends: [
-    { name: 'Vibhor', initial: 'V', sentiment: 'happy' },
-    { name: 'neutral', initial: 'Rini', sentiment: 'neutral' },
-    { name: 'Rhal', initial: 'Rini', sentiment: 'happy' },
-    { name: 'Happy', initial: 'R', sentiment: 'happy' },
-  ],
-  closeFriends: [
-    { name: 'Vibhor', engagement: 14 },
-    { name: 'Ravi Saxena', engagement: 11 },
-    { name: 'Neelam Rawat', engagement: 7 },
-  ],
-  location: {
-    name: 'New Delhi',
-    coordinates: [28.6139, 77.2090],
-  },
+const redFlags = ['Late night posts', 'Alcohol mentions'];
+
+const sentimentKeywords = {
+  happy: ['celebration', 'friends', 'adventure', 'success', 'love', 'fun'],
+  sad: ['miss', 'alone', 'disappointed', 'upset'],
+  angry: ['unfair', 'frustrated', 'annoyed'],
+  neutral: ['normal', 'routine', 'update', 'daily', 'work'],
 };
 
-const AnalysisView: React.FC = () => {
+const locationPoints = [
+  { lat: 28.6139, lng: 77.2090, intensity: 0.9 },
+  { lat: 28.6169, lng: 77.2120, intensity: 0.8 },
+  { lat: 28.6109, lng: 77.2060, intensity: 0.7 },
+  { lat: 30.9010, lng: 75.8573, intensity: 0.6 },
+  { lat: 30.9040, lng: 75.8603, intensity: 0.5 },
+  { lat: 19.0760, lng: 72.8777, intensity: 0.8 },
+  { lat: 19.0790, lng: 72.8807, intensity: 0.7 },
+  { lat: 19.0730, lng: 72.8747, intensity: 0.6 },
+];
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ReactNode;
+  gradient: string;
+  trend?: string;
+  trendUp?: boolean;
+}
+
+const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string }> = ({ children, gradient }) => {
+  return (
+    <Card
+      sx={{
+        background: gradient || 'rgba(30, 41, 59, 0.4)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(139, 92, 246, 0.2)',
+        borderRadius: 3,
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+        transition: 'all 0.3s ease',
+        width: '100%',
+        flex: 1,
+        '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: '0 12px 40px rgba(139, 92, 246, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.4)',
+        },
+      }}
+    >
+      {children}
+    </Card>
+  );
+};
+
+const StatCard: React.FC<StatCardProps> = ({
+  title,
+  value,
+  subtitle,
+  icon,
+  gradient,
+  trend,
+  trendUp,
+}) => {
+  return (
+    <GlassCard gradient={gradient}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: 'rgba(255, 255, 255, 0.7)', 
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                fontSize: '0.7rem',
+              }}
+            >
+              {title}
+            </Typography>
+            <Typography 
+              variant="h3" 
+              sx={{ 
+                fontWeight: 800, 
+                color: '#fff',
+                mt: 1,
+                mb: 0.5,
+                fontSize: { xs: '1.8rem', sm: '2.2rem' },
+              }}
+            >
+              {value}
+            </Typography>
+            {subtitle && (
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                {subtitle}
+              </Typography>
+            )}
+            {trend && (
+              <Chip
+                label={trend}
+                size="small"
+                icon={trendUp ? <TrendingUpIcon /> : undefined}
+                sx={{
+                  mt: 1.5,
+                  background: trendUp ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: trendUp ? '#10b981' : '#ef4444',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  border: `1px solid ${trendUp ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                }}
+              />
+            )}
+          </Box>
+          <Box
+            sx={{
+              width: 64,
+              height: 64,
+              borderRadius: 2,
+              background: 'rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+            }}
+          >
+            {icon}
+          </Box>
+        </Box>
+      </CardContent>
+    </GlassCard>
+  );
+};
+
+const Dashboard: React.FC = () => {
+  const theme = useTheme();
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [userAvatar] = useState(localStorage.getItem('userAvatar') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4');
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
+  const [openDialog, setOpenDialog] = useState<string | null>(null);
 
-  const toggleCluster = (clusterName: string) => {
-    setExpandedCluster(expandedCluster === clusterName ? null : clusterName);
+  const handleOpenDialog = (dialogType: string) => {
+    setOpenDialog(dialogType);
   };
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'happy':
-        return '#4caf50';
-      case 'sad':
-        return '#ff9800';
-      case 'angry':
-        return '#f44336';
-      case 'neutral':
-        return '#9e9e9e';
-      default:
-        return '#9e9e9e';
+  const handleCloseDialog = () => {
+    setOpenDialog(null);
+  };
+
+  // Function to load dashboard data
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Use mock data for now since backend endpoint doesn't exist yet
+      const mockStats = {
+        totalPosts: 847,
+        engagement: '2.4K',
+        sentiment: '85%',
+        activeHours: '6.2h',
+      };
+      setDashboardData(mockStats);
+    } catch (err) {
+      console.log('Using mock data');
+      setDashboardData({
+        totalPosts: 847,
+        engagement: '2.4K',
+        sentiment: '85%',
+        activeHours: '6.2h',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getSentimentEmoji = (sentiment: string) => {
-    switch (sentiment) {
-      case 'happy':
-        return '😊';
-      case 'sad':
-        return '😔';
-      case 'angry':
-        return '😠';
-      case 'neutral':
-        return '😐';
-      default:
-        return '😐';
-    }
-  };
+  useEffect(() => {
+    loadDashboardData();
+    const interval = setInterval(loadDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading && !dashboardData) {
+    return (
+      <Box 
+        display="flex" 
+        justifyContent="center" 
+        alignItems="center" 
+        minHeight="80vh"
+        sx={{
+          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)',
+        }}
+      >
+        <CircularProgress size={60} sx={{ color: '#a78bfa' }} />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#1e1e2e', minHeight: '100vh', color: '#fff' }}>
-      {/* Header Section */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '30px', gap: '20px' }}>
+    <Box 
+      sx={{ 
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 25%, #4c1d95 50%, #5b21b6 75%, #6d28d9 100%)',
+        backgroundAttachment: 'fixed',
+        p: 3,
+      }}
+    >
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 4 }}>
         <Avatar
-          src="https://i.imgur.com/7QXZYqM.jpg"
-          alt={mockData.name}
-          sx={{ width: 80, height: 80 }}
+          src={userAvatar}
+          sx={{
+            width: 72,
+            height: 72,
+            border: '3px solid rgba(255, 255, 255, 0.3)',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.4)',
+          }}
         />
-        <h2 style={{ margin: 0, fontSize: '28px' }}>{mockData.name}</h2>
-      </div>
+        <Box>
+          <Typography 
+            variant="h3" 
+            sx={{ 
+              fontWeight: 800, 
+              color: '#fff',
+              mb: 0.5,
+              textShadow: '0 2px 20px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            Welcome Back! 👋
+          </Typography>
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontSize: '1.1rem',
+            }}
+          >
+            Here's what's happening with your child's online activity
+          </Typography>
+        </Box>
+      </Box>
 
-      {/* Clusters Section - Full Width */}
-      <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px', marginBottom: '20px' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px' }}>Clusters</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
-          {mockData.clusters.map((cluster, index) => (
-            <div key={index}>
-              <div
-                style={{
-                  backgroundColor: '#3a3a4a',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
+      {/* Three Column Cards */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 3, mb: 4, alignItems: 'stretch' }}>
+        {/* Statistics Card - Small Preview */}
+        <Box
+          onClick={() => handleOpenDialog('statistics')}
+          sx={{
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            display: 'flex',
+            width: '100%',
+            '&:hover': {
+              transform: 'scale(1.03)',
+            },
+          }}
+        >
+          <GlassCard gradient="linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.2) 100%)">
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                📊 Statistics
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+                Overview of key metrics and activities
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
+                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)' }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                    📝 Total Posts: <strong style={{ color: '#fff' }}>847</strong>
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)' }}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                    📍 Locations: <strong style={{ color: '#fff' }}>3 cities</strong>
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="caption" sx={{ color: '#8b5cf6', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                  Click to see more details →
+                </Typography>
+              </Box>
+            </CardContent>
+          </GlassCard>
+        </Box>
+
+        {/* Engagement Card - Small Preview (MOVED TO MIDDLE) */}
+        <Box
+          onClick={() => handleOpenDialog('engagement')}
+          sx={{
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            display: 'flex',
+            width: '100%',
+            '&:hover': {
+              transform: 'scale(1.03)',
+            },
+          }}
+        >
+          <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.2) 100%)">
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                👥 Overall Engagement
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+                Top engagers and their interaction levels
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
+                {[
+                  { name: 'Vibhor', engagement: 14 },
+                  { name: 'Ravi Saxena', engagement: 11 },
+                ].map((person, index) => (
+                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.85rem' }}>
+                      {person.name}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#10b981', fontWeight: 700 }}>
+                      {person.engagement}
+                    </Typography>
+                  </Box>
+                ))}
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="caption" sx={{ color: '#10b981', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                  +8 more people →
+                </Typography>
+              </Box>
+            </CardContent>
+          </GlassCard>
+        </Box>
+
+        {/* Clusters Card - Small Preview (MOVED TO RIGHT) */}
+        <Box
+          onClick={() => handleOpenDialog('clusters')}
+          sx={{
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            display: 'flex',
+            width: '100%',
+            '&:hover': {
+              transform: 'scale(1.03)',
+            },
+          }}
+        >
+          <GlassCard gradient="linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(219, 39, 119, 0.2) 100%)">
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', minHeight: '280px', width: '100%' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
+                🎯 Clusters
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2, fontSize: '0.9rem' }}>
+                Content categories and themes
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
+                {[
+                  'Humor & Entertainment',
+                  'Travel & Destinations',
+                ].map((cluster, index) => (
+                  <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.08)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', background: '#ec4899' }} />
+                    <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.85rem' }}>
+                      {cluster}
+                    </Typography>
+                  </Box>
+                ))}
+                <Box sx={{ flex: 1 }} />
+                <Typography variant="caption" sx={{ color: '#ec4899', textAlign: 'center', mt: 1, fontWeight: 600 }}>
+                  +10 more clusters →
+                </Typography>
+              </Box>
+            </CardContent>
+          </GlassCard>
+        </Box>
+      </Box>
+
+      {/* Dialog Popups */}
+      {/* Statistics Dialog */}
+      <Dialog
+        open={openDialog === 'statistics'}
+        onClose={handleCloseDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.9) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            📊 Statistics - Full Details
+          </Typography>
+          <IconButton onClick={handleCloseDialog} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 3, lineHeight: 1.6 }}>
+            Get a complete overview of your child's social media activity. See how many posts they've shared, where they're posting from, and who's engaging most with their content. This helps you understand their online presence and social connections.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            {[
+              { label: 'Total Posts', value: '847', icon: '📝' },
+              { label: 'Locations', value: 'Delhi, Mumbai, Ludhiana', icon: '📍' },
+              { label: 'Most Liked By', value: 'Vibhor (142 likes)', icon: '❤️' },
+              { label: 'Most Commented By', value: 'Ravi Saxena (89 comments)', icon: '💬' },
+              { label: 'Most Shared By', value: 'Neelam Rawat (56 shares)', icon: '🔄' },
+            ].map((stat, index) => (
+              <Box
+                key={index}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 2,
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
+                  <Typography sx={{ fontSize: '1.5rem' }}>{stat.icon}</Typography>
+                  <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontWeight: 600 }}>
+                    {stat.label}
+                  </Typography>
+                </Box>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, pl: 5.5 }}>
+                  {stat.value}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clusters Dialog */}
+      <Dialog
+        open={openDialog === 'clusters'}
+        onClose={handleCloseDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.95) 0%, rgba(219, 39, 119, 0.9) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            🎯 All Clusters
+          </Typography>
+          <IconButton onClick={handleCloseDialog} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 3, lineHeight: 1.6 }}>
+            These are the main topics and themes your child posts about on social media. Understanding their interests helps you stay connected with what matters to them and identify any concerning patterns in their content.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            {[
+              'Humor & Entertainment',
+              'Travel & Destinations',
+              'Mountain Adventures',
+              'SEO & Professional Events',
+              'Social Media & Networking',
+              'Nostalgia & Memories',
+              'Education & Milestones',
+              'Meetups & Networking Events',
+              'Industry Experts & Mentors',
+              'Life Philosophy & Wisdom',
+              'Emotional & Social Causes',
+              'Miscellaneous',
+            ].map((cluster, index) => (
+              <Box
+                key={index}
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 0 10px rgba(255, 255, 255, 0.8)',
+                  }}
+                />
+                <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                  {cluster}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Engagement Dialog */}
+      <Dialog
+        open={openDialog === 'engagement'}
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.9) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            👥 All Engagers
+          </Typography>
+          <IconButton onClick={handleCloseDialog} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 3, lineHeight: 1.6 }}>
+            These are the people who interact most with your child's posts through likes, comments, and shares. Knowing their closest online friends helps you understand their social circle and who influences them the most.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            {[
+              { name: 'Vibhor', engagement: 14 },
+              { name: 'Ravi Saxena', engagement: 11 },
+              { name: 'Neelam Rawat', engagement: 7 },
+              { name: 'Priya Sharma', engagement: 9 },
+              { name: 'Amit Kumar', engagement: 6 },
+              { name: 'Sonia Verma', engagement: 8 },
+              { name: 'Rahul Singh', engagement: 5 },
+              { name: 'Pooja Gupta', engagement: 7 },
+              { name: 'Karan Malhotra', engagement: 4 },
+              { name: 'Anjali Reddy', engagement: 6 },
+            ].map((person, index) => (
+              <Box
+                key={index}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 2,
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                 }}
-                onClick={() => toggleCluster(cluster.name)}
               >
-                <span>{cluster.name}</span>
-                <span style={{ fontSize: '18px' }}>
-                  {expandedCluster === cluster.name ? '▼' : '▶'}
-                </span>
-              </div>
-              {expandedCluster === cluster.name && (
-                <div
-                  style={{
-                    backgroundColor: '#2d2d3d',
-                    padding: '15px',
-                    marginTop: '5px',
-                    borderRadius: '8px',
+                <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                  {person.name}
+                </Typography>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    color: '#fff',
+                    fontWeight: 700,
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    px: 2.5,
+                    py: 0.5,
+                    borderRadius: 2,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '20px' }}>📊</span>
-                    <span>Total posts: {cluster.numPosts}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '20px' }}>🔥</span>
-                    <span>Top post: "{cluster.topPost}"</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+                  {person.engagement}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+      </Dialog>
 
-      {/* Main Content Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        
-        {/* Left Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Activity Clusters */}
+      <Box sx={{ mb: 4 }}>
+        <GlassCard gradient="linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(236, 72, 153, 0.2) 100%)">
+          <CardContent>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
+              📊 Activity Clusters
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+              {activityClusters.map((cluster, index) => {
+                const gradients = [
+                  'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.1) 100%)',
+                  'linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(219, 39, 119, 0.1) 100%)',
+                  'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%)',
+                  'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.1) 100%)',
+                ];
+                const hoverGradients = [
+                  'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.15) 100%)',
+                  'linear-gradient(135deg, rgba(236, 72, 153, 0.25) 0%, rgba(219, 39, 119, 0.15) 100%)',
+                  'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.15) 100%)',
+                  'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.15) 100%)',
+                ];
+                return (
+                <Box key={index}>
+                  <Box
+                    onClick={() => setExpandedCluster(expandedCluster === cluster.name ? null : cluster.name)}
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      background: gradients[index % 4],
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        background: hoverGradients[index % 4],
+                        border: '1px solid rgba(139, 92, 246, 0.5)',
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 8px 16px rgba(139, 92, 246, 0.2)',
+                      },
+                    }}
+                  >
+                    <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                      {cluster.name}
+                    </Typography>
+                    {expandedCluster === cluster.name ? <ExpandLessIcon sx={{ color: '#a78bfa' }} /> : <ExpandMoreIcon sx={{ color: '#a78bfa' }} />}
+                  </Box>
+                  {expandedCluster === cluster.name && (
+                    <Box sx={{ 
+                      p: 2, 
+                      mt: 1, 
+                      borderRadius: 2, 
+                      background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%)',
+                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                        <Typography sx={{ fontSize: '1.2rem' }}>📊</Typography>
+                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                          Total posts: <strong style={{ color: '#a78bfa' }}>{cluster.numPosts}</strong>
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Typography sx={{ fontSize: '1.2rem' }}>🔥</Typography>
+                        <Typography sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                          Top post: <em>"{cluster.topPost}"</em>
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )})}
+            </Box>
+          </CardContent>
+        </GlassCard>
+      </Box>
 
-          {/* Close Friends Table */}
-          <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px' }}>Close Friends</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #3a3a4a' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: '600' }}>Name</th>
-                  <th style={{ padding: '12px', textAlign: 'right', fontWeight: '600' }}>High Engagement</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockData.closeFriends.map((friend, index) => (
-                  <tr key={index} style={{ borderBottom: '1px solid #3a3a4a' }}>
-                    <td style={{ padding: '12px' }}>{friend.name}</td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: '600', color: '#4caf50' }}>
-                      {friend.engagement}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Friends and Their Sentiments */}
-          <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px' }}>Friends and Their Sentiments</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              {mockData.friends.map((friend, index) => (
-                <div
-                  key={index}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                  }}
-                >
-                  <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{friend.initial}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '24px' }}>{getSentimentEmoji(friend.sentiment)}</span>
-                    <span>{friend.name}</span>
-                  </div>
-                </div>
+      {/* Close Friends & Red Flags */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 4 }}>
+        {/* Moods */}
+        <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(6, 182, 212, 0.2) 100%)">
+          <CardContent>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
+              😊 Moods
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {[
+                { 
+                  label: 'Happy', 
+                  value: 65, 
+                  color: '#10b981', 
+                  icon: '😊',
+                  keywords: ['celebration', 'friends', 'adventure', 'success', 'love', 'fun']
+                },
+                { 
+                  label: 'Sad', 
+                  value: 15, 
+                  color: '#3b82f6', 
+                  icon: '😢',
+                  keywords: ['miss', 'alone', 'disappointed', 'upset', 'cry']
+                },
+                { 
+                  label: 'Angry', 
+                  value: 10, 
+                  color: '#ef4444', 
+                  icon: '😠',
+                  keywords: ['unfair', 'frustrated', 'annoyed', 'mad', 'hate']
+                },
+                { 
+                  label: 'Neutral', 
+                  value: 10, 
+                  color: '#f59e0b', 
+                  icon: '😐',
+                  keywords: ['normal', 'routine', 'update', 'daily', 'work']
+                },
+              ].map((mood, index) => (
+                <Box key={index}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Typography sx={{ fontSize: '1.5rem' }}>{mood.icon}</Typography>
+                      <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                        {mood.label}
+                      </Typography>
+                    </Box>
+                    <Typography variant="h6" sx={{ color: mood.color, fontWeight: 700 }}>
+                      {mood.value}%
+                    </Typography>
+                  </Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={mood.value}
+                    sx={{
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                      mb: 1,
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: mood.color,
+                        borderRadius: 4,
+                      },
+                    }}
+                  />
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                    {mood.keywords.map((keyword, kidx) => (
+                      <Chip
+                        key={kidx}
+                        label={keyword}
+                        size="small"
+                        sx={{
+                          background: `${mood.color}22`,
+                          color: mood.color,
+                          fontWeight: 500,
+                          fontSize: '0.7rem',
+                          border: `1px solid ${mood.color}44`,
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
               ))}
-            </div>
-          </div>
+            </Box>
+          </CardContent>
+        </GlassCard>
 
-          {/* Sentiments with Progress Bars */}
-          <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px' }}>Sentiments</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {/* Happy */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>😊</span>
-                    <span>Happy {mockData.sentiments.happy}%</span>
-                  </span>
-                </div>
-                <div style={{ backgroundColor: '#3a3a4a', borderRadius: '10px', height: '10px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      backgroundColor: getSentimentColor('happy'),
-                      height: '100%',
-                      width: `${mockData.sentiments.happy}%`,
-                      borderRadius: '10px',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Sad */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>😔</span>
-                    <span>Sad {mockData.sentiments.sad}%</span>
-                  </span>
-                </div>
-                <div style={{ backgroundColor: '#3a3a4a', borderRadius: '10px', height: '10px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      backgroundColor: getSentimentColor('sad'),
-                      height: '100%',
-                      width: `${mockData.sentiments.sad}%`,
-                      borderRadius: '10px',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Angry */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>😠</span>
-                    <span>Angry {mockData.sentiments.angry}%</span>
-                  </span>
-                </div>
-                <div style={{ backgroundColor: '#3a3a4a', borderRadius: '10px', height: '10px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      backgroundColor: getSentimentColor('angry'),
-                      height: '100%',
-                      width: `${mockData.sentiments.angry}%`,
-                      borderRadius: '10px',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Neutral */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>😐</span>
-                    <span>Neutral {mockData.sentiments.neutral}%</span>
-                  </span>
-                </div>
-                <div style={{ backgroundColor: '#3a3a4a', borderRadius: '10px', height: '10px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      backgroundColor: getSentimentColor('neutral'),
-                      height: '100%',
-                      width: `${mockData.sentiments.neutral}%`,
-                      borderRadius: '10px',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Red Flags */}
-          <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px' }}>Red Flags</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {mockData.redFlags.map((flag, index) => (
-                <div
+        {/* Red Flags */}
+        <GlassCard gradient="linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(251, 146, 60, 0.2) 100%)">
+          <CardContent>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3 }}>
+              🚨 Red Flags
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {redFlags.map((flag, index) => (
+                <Box
                   key={index}
-                  style={{
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    backgroundColor: '#3a3a4a',
-                    padding: '10px',
-                    borderRadius: '8px',
+                    gap: 2,
                   }}
                 >
-                  <span style={{ fontSize: '20px' }}>
+                  <Typography sx={{ fontSize: '1.5rem' }}>
                     {flag.toLowerCase().includes('alcohol') ? '🍺' : '🚨'}
-                  </span>
-                  <span>{flag}</span>
-                </div>
+                  </Typography>
+                  <Typography sx={{ color: '#fff', fontWeight: 500 }}>{flag}</Typography>
+                </Box>
               ))}
-            </div>
-          </div>
+            </Box>
+          </CardContent>
+        </GlassCard>
+      </Box>
 
-          {/* Locations */}
-          <div style={{ backgroundColor: '#252533', padding: '20px', borderRadius: '10px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📍 Locations
-            </h3>
-            <div style={{ height: '300px', borderRadius: '8px', overflow: 'hidden', marginBottom: '10px' }}>
-              <MapContainer
-                center={mockData.location.coordinates}
-                zoom={13}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <Marker position={mockData.location.coordinates}>
-                  <Popup>{mockData.location.name}</Popup>
-                </Marker>
-              </MapContainer>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '20px' }}>📍</span>
-              <span style={{ fontSize: '16px', fontWeight: 'bold' }}>{mockData.location.name}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      {/* Location Heatmap */}
+      <GlassCard>
+        <CardContent>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 2 }}>
+            📍 Activity Locations Heatmap
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 2 }}>
+            Shows where your child is most active based on post locations
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ff0000' }} />
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                High activity: New Delhi, Mumbai
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ffaa00' }} />
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                Moderate activity: Ludhiana
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ height: 400, borderRadius: 2, overflow: 'hidden' }}>
+            <MapContainer
+              center={[26, 76]}
+              zoom={5}
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {locationPoints.map((location, idx) => {
+                const getColor = (intensity: number) => {
+                  if (intensity >= 0.8) return '#ff0000';
+                  if (intensity >= 0.6) return '#ff6600';
+                  return '#ffaa00';
+                };
+                
+                return (
+                  <Circle
+                    key={idx}
+                    center={[location.lat, location.lng]}
+                    radius={location.intensity * 50000}
+                    pathOptions={{
+                      fillColor: getColor(location.intensity),
+                      fillOpacity: 0.5,
+                      color: getColor(location.intensity),
+                      weight: 2,
+                      opacity: 0.7,
+                    }}
+                  >
+                    <MapTooltip>
+                      Activity intensity: {Math.round(location.intensity * 100)}%
+                    </MapTooltip>
+                  </Circle>
+                );
+              })}
+            </MapContainer>
+          </Box>
+        </CardContent>
+      </GlassCard>
+    </Box>
   );
 };
 
-export default AnalysisView;
+export default Dashboard;

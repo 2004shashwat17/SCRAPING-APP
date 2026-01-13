@@ -13,11 +13,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon,
-  Article as PostsIcon,
   Security as ThreatIcon,
-  Settings as SettingsIcon,
-  DataObject as DataIcon,
   AccountCircle as SocialIcon,
   Analytics as AnalyticsIcon,
 } from '@mui/icons-material';

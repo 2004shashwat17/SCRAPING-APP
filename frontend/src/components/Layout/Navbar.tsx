@@ -13,12 +13,12 @@ import {
   useTheme,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import {
   Menu as MenuIcon,
   Notifications as NotificationsIcon,
   AccountCircle as AccountIcon,
   Logout as LogoutIcon,
-  Settings as SettingsIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
@@ -29,8 +29,20 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const theme = useTheme();
   const { logout, user } = useAuth();
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [notificationCount] = React.useState(3); // Mock notification count
+  const [userAvatar, setUserAvatar] = React.useState(localStorage.getItem('userAvatar') || '');
+
+  // Listen for avatar changes
+  React.useEffect(() => {
+    const handleAvatarChange = () => {
+      setUserAvatar(localStorage.getItem('userAvatar') || '');
+    };
+    
+    window.addEventListener('avatarChanged', handleAvatarChange);
+    return () => window.removeEventListener('avatarChanged', handleAvatarChange);
+  }, []);
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -38,6 +50,11 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleProfile = () => {
+    navigate('/profile');
+    handleMenuClose();
   };
 
   const handleLogout = async () => {
@@ -126,6 +143,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             color="inherit"
           >
             <Avatar
+              src={userAvatar}
               sx={{
                 width: 32,
                 height: 32,
@@ -162,13 +180,9 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           },
         }}
       >
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleProfile}>
           <AccountIcon sx={{ mr: 2 }} />
           Profile
-        </MenuItem>
-        <MenuItem onClick={handleMenuClose}>
-          <SettingsIcon sx={{ mr: 2 }} />
-          Settings
         </MenuItem>
         <MenuItem onClick={handleLogout}>
           <LogoutIcon sx={{ mr: 2 }} />

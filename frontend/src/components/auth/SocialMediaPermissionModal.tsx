@@ -27,11 +27,8 @@ import {
 import { styled } from '@mui/material/styles';
 import {
   Shield,
-  Eye,
   Lock,
   Facebook,
-  Twitter,
-  Instagram,
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';

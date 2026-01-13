@@ -119,6 +119,19 @@ const DataCollectionStatus: React.FC<DataCollectionStatusProps> = () => {
     return () => clearInterval(timer);
   }, [collectingData]);
 
+  // Display collection result summary when available to avoid unused state
+  const CollectionResultView = () => {
+    if (!collectionResults) return null;
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="subtitle2">Last collection result:</Typography>
+        <Paper sx={{ p: 2, mt: 1, whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 12 }}>
+          {JSON.stringify(collectionResults, null, 2)}
+        </Paper>
+      </Box>
+    );
+  };
+
   const getPermissions = () => {
     const permissions = localStorage.getItem('socialMediaPermissions');
     return permissions ? JSON.parse(permissions) : {};
@@ -253,6 +266,8 @@ const DataCollectionStatus: React.FC<DataCollectionStatusProps> = () => {
               )}
             </CardContent>
           </Card>
+          {/* Show last collection results when available */}
+          <CollectionResultView />
           </Box>
 
           {/* Monitored Platforms Card */}
