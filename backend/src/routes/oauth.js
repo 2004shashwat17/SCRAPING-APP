@@ -143,39 +143,35 @@ router.get('/facebook/callback', async (req, res) => {
 
     // Update the logged-in user with Facebook data
     let user;
-    if (userId) {
-      // Link Facebook to the currently logged-in user
-      user = await User.findById(userId);
-      if (user) {
-        user.facebookId = fbUser.id;
-        user.facebookAccessToken = accessToken;
-        user.facebookName = fbUser.name;
-        user.facebookEmail = fbUser.email;
-        user.facebookConnected = true;
-        user.facebookConnectedAt = new Date();
-      }
-    } else {
-      // Fallback: find by Facebook ID or create new user
-      user = await User.findOne({ facebookId: fbUser.id });
-      if (!user) {
-        user = new User({
-          username: fbUser.name,
-          email: fbUser.email,
-          facebookId: fbUser.id,
-          facebookAccessToken: accessToken,
-          facebookName: fbUser.name,
-          facebookEmail: fbUser.email,
-          facebookConnected: true,
-          facebookConnectedAt: new Date(),
-        });
-      } else {
-        user.facebookAccessToken = accessToken;
-        user.facebookName = fbUser.name;
-        user.facebookEmail = fbUser.email;
-        user.facebookConnected = true;
-        user.facebookConnectedAt = new Date();
-      }
+    if (!userId) {
+      // No logged-in user - redirect back with error
+      const frontendBase = 'http://localhost:3000';
+      const frontendUrl = `${frontendBase}/social-accounts`;
+      const params = new URLSearchParams({
+        error: 'facebook',
+        details: 'Please login first before connecting Facebook',
+      });
+      return res.redirect(`${frontendUrl}?${params.toString()}`);
     }
+    
+    // Link Facebook to the currently logged-in user
+    user = await User.findById(userId);
+    if (!user) {
+      const frontendBase = 'http://localhost:3000';
+      const frontendUrl = `${frontendBase}/social-accounts`;
+      const params = new URLSearchParams({
+        error: 'facebook',
+        details: 'User not found',
+      });
+      return res.redirect(`${frontendUrl}?${params.toString()}`);
+    }
+    
+    user.facebookId = fbUser.id;
+    user.facebookAccessToken = accessToken;
+    user.facebookName = fbUser.name;
+    user.facebookEmail = fbUser.email;
+    user.facebookConnected = true;
+    user.facebookConnectedAt = new Date();
     await user.save();
       
       // Start background scraping job (non-blocking)

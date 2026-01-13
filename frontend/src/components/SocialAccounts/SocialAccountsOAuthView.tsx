@@ -120,9 +120,12 @@ const SocialAccountsOAuthView: React.FC = () => {
     // For Facebook, redirect directly to backend OAuth endpoint with token
     if (platform === 'facebook') {
       const token = localStorage.getItem('access_token');
+      // Use the base URL without /api/v1 suffix for OAuth routes
+      const baseUrl = getApiBaseUrl().replace('/api/v1', '').replace(/\/api$/, '');
       const url = token 
-        ? `${getApiBaseUrl()}/oauth/facebook?token=${encodeURIComponent(token)}`
-        : `${getApiBaseUrl()}/oauth/facebook`;
+        ? `${baseUrl}/api/oauth/facebook?token=${encodeURIComponent(token)}`
+        : `${baseUrl}/api/oauth/facebook`;
+      console.log('Redirecting to:', url);
       window.location.href = url;
       return;
     }
