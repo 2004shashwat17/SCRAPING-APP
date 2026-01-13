@@ -5,17 +5,10 @@ import {
   Typography,
   Box,
   Chip,
-  useTheme,
   CircularProgress,
   Alert,
   Avatar,
   LinearProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -24,33 +17,12 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import {
   TrendingUp as TrendingUpIcon,
-  People as PeopleIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  LocalFireDepartment as FireIcon,
-  SentimentSatisfied as HappyIcon,
-  SentimentDissatisfied as SadIcon,
-  Mood as MoodIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from 'recharts';
 import { MapContainer, TileLayer, Circle, Tooltip as MapTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-
-import apiClient from '../../services/apiClient';
 
 // Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -60,24 +32,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-// Mock enhanced data
-const activityTrendData = [
-  { date: 'Mon', posts: 45, engagement: 120, sentiment: 85 },
-  { date: 'Tue', posts: 52, engagement: 145, sentiment: 78 },
-  { date: 'Wed', posts: 38, engagement: 98, sentiment: 90 },
-  { date: 'Thu', posts: 65, engagement: 178, sentiment: 72 },
-  { date: 'Fri', posts: 58, engagement: 156, sentiment: 88 },
-  { date: 'Sat', posts: 72, engagement: 198, sentiment: 95 },
-  { date: 'Sun', posts: 48, engagement: 132, sentiment: 82 },
-];
-
-const topTopics = [
-  { name: 'Friends & Social', count: 45, color: '#8b5cf6', icon: '👥' },
-  { name: 'School & Study', count: 32, color: '#ec4899', icon: '📚' },
-  { name: 'Sports & Games', count: 28, color: '#f59e0b', icon: '⚽' },
-  { name: 'Entertainment', count: 24, color: '#10b981', icon: '🎮' },
-];
-
 const activityClusters = [
   { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
   { name: 'Threats & Controversies ➤', numPosts: 8, topPost: 'Breaking news today' },
@@ -85,20 +39,7 @@ const activityClusters = [
   { name: 'Social Media & Networking ➤', numPosts: 7, topPost: 'Completed 5 Years With Facebook' },
 ];
 
-const closeFriends = [
-  { name: 'Vibhor', engagement: 14 },
-  { name: 'Ravi Saxena', engagement: 11 },
-  { name: 'Neelam Rawat', engagement: 7 },
-];
-
 const redFlags = ['Late night posts', 'Alcohol mentions'];
-
-const sentimentKeywords = {
-  happy: ['celebration', 'friends', 'adventure', 'success', 'love', 'fun'],
-  sad: ['miss', 'alone', 'disappointed', 'upset'],
-  angry: ['unfair', 'frustrated', 'annoyed'],
-  neutral: ['normal', 'routine', 'update', 'daily', 'work'],
-};
 
 const locationPoints = [
   { lat: 28.6139, lng: 77.2090, intensity: 0.9 },
@@ -110,16 +51,6 @@ const locationPoints = [
   { lat: 19.0790, lng: 72.8807, intensity: 0.7 },
   { lat: 19.0730, lng: 72.8747, intensity: 0.6 },
 ];
-
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ReactNode;
-  gradient: string;
-  trend?: string;
-  trendUp?: boolean;
-}
 
 const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string }> = ({ children, gradient }) => {
   return (
@@ -145,87 +76,7 @@ const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string }> = ({
   );
 };
 
-const StatCard: React.FC<StatCardProps> = ({
-  title,
-  value,
-  subtitle,
-  icon,
-  gradient,
-  trend,
-  trendUp,
-}) => {
-  return (
-    <GlassCard gradient={gradient}>
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: 'rgba(255, 255, 255, 0.7)', 
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: 1,
-                fontSize: '0.7rem',
-              }}
-            >
-              {title}
-            </Typography>
-            <Typography 
-              variant="h3" 
-              sx={{ 
-                fontWeight: 800, 
-                color: '#fff',
-                mt: 1,
-                mb: 0.5,
-                fontSize: { xs: '1.8rem', sm: '2.2rem' },
-              }}
-            >
-              {value}
-            </Typography>
-            {subtitle && (
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                {subtitle}
-              </Typography>
-            )}
-            {trend && (
-              <Chip
-                label={trend}
-                size="small"
-                icon={trendUp ? <TrendingUpIcon /> : undefined}
-                sx={{
-                  mt: 1.5,
-                  background: trendUp ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                  color: trendUp ? '#10b981' : '#ef4444',
-                  fontWeight: 700,
-                  fontSize: '0.75rem',
-                  border: `1px solid ${trendUp ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                }}
-              />
-            )}
-          </Box>
-          <Box
-            sx={{
-              width: 64,
-              height: 64,
-              borderRadius: 2,
-              background: 'rgba(255, 255, 255, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-            }}
-          >
-            {icon}
-          </Box>
-        </Box>
-      </CardContent>
-    </GlassCard>
-  );
-};
-
 const Dashboard: React.FC = () => {
-  const theme = useTheme();
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
