@@ -229,7 +229,8 @@ class ApiClient {
 
   // Update user avatar
   async updateAvatar(avatar: string): Promise<any> {
-    return this.request('/auth/avatar', {
+    // NOTE: auth routes are mounted at /api/auth on the backend
+    return this.request('/api/auth/avatar', {
       method: 'PUT',
       body: JSON.stringify({ avatar }),
     });
