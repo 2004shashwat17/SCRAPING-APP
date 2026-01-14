@@ -26,6 +26,8 @@ import {
 import { MapContainer, TileLayer, Circle, Tooltip as MapTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import apiClient from '../../services/apiClient';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -34,6 +36,19 @@ L.Icon.Default.mergeOptions({
   iconUrl: require('leaflet/dist/images/marker-icon.png'),
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
+
+// Location coordinates mapping
+const LOCATION_COORDS: Record<string, [number, number]> = {
+  'New Delhi': [28.6139, 77.2090],
+  'Delhi': [28.6139, 77.2090],
+  'Mumbai': [19.0760, 72.8777],
+  'Dalhousie': [32.5437, 75.9472],
+  'Jammu, Katra': [32.9916, 74.9320],
+  'Jammu': [32.7266, 74.8570],
+  'Katra': [32.9916, 74.9320],
+  'Thailand': [15.8700, 100.9925],
+  'Ludhiana': [30.9010, 75.8573],
+};
 
 const activityClusters = [
   { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
@@ -54,6 +69,14 @@ const locationPoints = [
   { lat: 19.0790, lng: 72.8807, intensity: 0.7 },
   { lat: 19.0730, lng: 72.8747, intensity: 0.6 },
 ];
+
+// Function to get color based on post count density
+const getLocationColor = (count: number, maxCount: number): string => {
+  const intensity = count / maxCount;
+  if (intensity >= 0.7) return '#ff0000'; // Dense - Dark Red
+  if (intensity >= 0.4) return '#ff6600'; // Medium - Orange  
+  return '#ffaa00'; // Low - Yellow
+};
 
 const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string; priority?: boolean }> = ({ children, gradient, priority }) => {
   return (
@@ -84,7 +107,9 @@ const GlassCard: React.FC<{ children: React.ReactNode; gradient?: string; priori
 };
 
 const Dashboard: React.FC = () => {
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState<any>(null);
+  const [edaData, setEdaData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userAvatar] = useState(localStorage.getItem('userAvatar') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4');
@@ -132,16 +157,41 @@ const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      // Use mock data for now since backend endpoint doesn't exist yet
-      const mockStats = {
-        totalPosts: 847,
-        engagement: '2.4K',
-        sentiment: '85%',
-        activeHours: '6.2h',
-      };
-      setDashboardData(mockStats);
+      
+      // Fetch EDA data if user is logged in
+      if (user?.id) {
+        try {
+          const data = await apiClient.getEdaDashboardStats(user.id, 'shaswat');
+          setEdaData(data);
+          
+          // Set dashboard data from EDA
+          setDashboardData({
+            totalPosts: data.statistics.totalPosts,
+            engagement: '2.4K',
+            sentiment: '85%',
+            activeHours: '6.2h',
+          });
+        } catch (edaError) {
+          console.error('EDA data fetch failed:', edaError);
+          // Use mock data on error
+          setDashboardData({
+            totalPosts: 847,
+            engagement: '2.4K',
+            sentiment: '85%',
+            activeHours: '6.2h',
+          });
+        }
+      } else {
+        // Use mock data if no user
+        setDashboardData({
+          totalPosts: 847,
+          engagement: '2.4K',
+          sentiment: '85%',
+          activeHours: '6.2h',
+        });
+      }
     } catch (err) {
-      console.log('Using mock data');
+      console.log('Using mock data', err);
       setDashboardData({
         totalPosts: 847,
         engagement: '2.4K',
@@ -253,12 +303,12 @@ const Dashboard: React.FC = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
                 <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)' }}>
                   <Typography variant="body2" sx={{ color: '#C9CED6' }}>
-                    📝 Total Posts: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>847</strong>
+                    📝 Total Posts: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>{edaData?.statistics?.totalPosts || 847}</strong>
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)' }}>
                   <Typography variant="body2" sx={{ color: '#C9CED6' }}>
-                    📍 Locations: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>3 cities</strong>
+                    📍 Locations: <strong style={{ color: '#F5F7FA', fontVariantNumeric: 'tabular-nums' }}>{edaData?.statistics?.totalLocations || 3} cities</strong>
                   </Typography>
                 </Box>
                 <Box sx={{ flex: 1 }} />
@@ -292,16 +342,16 @@ const Dashboard: React.FC = () => {
                 Top engagers and their interaction levels
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
-                {[
-                  { name: 'Vibhor', engagement: 14 },
-                  { name: 'Ravi Saxena', engagement: 11 },
-                ].map((person, index) => (
+                {(edaData?.engagement?.topEngagers?.slice(0, 2) || [
+                  { name: 'Vibhor', count: 14 },
+                  { name: 'Ravi Saxena', count: 11 },
+                ]).map((person: any, index: number) => (
                   <Box key={index} sx={{ p: 1.5, borderRadius: 2, background: 'rgba(255, 255, 255, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography variant="body2" sx={{ color: '#C9CED6', fontSize: '0.85rem' }}>
                       {person.name}
                     </Typography>
                     <Typography variant="body2" sx={{ color: '#F5F7FA', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {person.engagement}
+                      {person.count}
                     </Typography>
                   </Box>
                 ))}
@@ -402,7 +452,7 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, pl: 5.5 }}>
-                847
+                {edaData?.statistics?.totalPosts || 847}
               </Typography>
             </Box>
 
@@ -422,15 +472,15 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 5.5 }}>
-                {[
-                  { city: 'Delhi', posts: 1 },
-                  { city: 'Jammu', posts: 1 },
-                  { city: 'Dalhousie', posts: 1 },
-                  { city: 'Thailand', posts: 1 },
-                ].map((location, idx) => (
+                {(edaData?.statistics?.locations || [
+                  { name: 'Delhi', count: 1 },
+                  { name: 'Jammu', count: 1 },
+                  { name: 'Dalhousie', count: 1 },
+                  { name: 'Thailand', count: 1 },
+                ]).map((location: any, idx: number) => (
                   <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Typography sx={{ color: '#fff', fontWeight: 500 }}>
-                      {location.city}
+                      {location.name}
                     </Typography>
                     <Typography
                       sx={{
@@ -443,7 +493,7 @@ const Dashboard: React.FC = () => {
                         fontSize: '0.9rem',
                       }}
                     >
-                      {location.posts} post{location.posts > 1 ? 's' : ''}
+                      {location.count} post{location.count > 1 ? 's' : ''}
                     </Typography>
                   </Box>
                 ))}
@@ -699,18 +749,18 @@ const Dashboard: React.FC = () => {
             These are the people who interact most with your child's posts through likes, comments, and shares. Knowing their closest online friends helps you understand their social circle and who influences them the most.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            {[
-              { name: 'Vibhor', engagement: 14 },
-              { name: 'Ravi Saxena', engagement: 11 },
-              { name: 'Neelam Rawat', engagement: 7 },
-              { name: 'Priya Sharma', engagement: 9 },
-              { name: 'Amit Kumar', engagement: 6 },
-              { name: 'Sonia Verma', engagement: 8 },
-              { name: 'Rahul Singh', engagement: 5 },
-              { name: 'Pooja Gupta', engagement: 7 },
-              { name: 'Karan Malhotra', engagement: 4 },
-              { name: 'Anjali Reddy', engagement: 6 },
-            ].map((person, index) => (
+            {(edaData?.engagement?.topEngagers || [
+              { name: 'Vibhor', count: 14 },
+              { name: 'Ravi Saxena', count: 11 },
+              { name: 'Neelam Rawat', count: 7 },
+              { name: 'Priya Sharma', count: 9 },
+              { name: 'Amit Kumar', count: 6 },
+              { name: 'Sonia Verma', count: 8 },
+              { name: 'Rahul Singh', count: 5 },
+              { name: 'Pooja Gupta', count: 7 },
+              { name: 'Karan Malhotra', count: 4 },
+              { name: 'Anjali Reddy', count: 6 },
+            ]).map((person: any, index: number) => (
               <Box
                 key={index}
                 sx={{
@@ -737,7 +787,7 @@ const Dashboard: React.FC = () => {
                     borderRadius: 2,
                   }}
                 >
-                  {person.engagement}
+                  {person.count}
                 </Typography>
               </Box>
             ))}
@@ -1015,32 +1065,40 @@ const Dashboard: React.FC = () => {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-              {locationPoints.map((location, idx) => {
-                const getColor = (intensity: number) => {
-                  if (intensity >= 0.8) return '#ff0000';
-                  if (intensity >= 0.6) return '#ff6600';
-                  return '#ffaa00';
-                };
+              {(() => {
+                // Get top 4 locations from EDA data
+                const topLocations = edaData?.heatmap?.topLocations || [];
+                const maxCount = topLocations.length > 0 ? topLocations[0].count : 1;
                 
-                return (
-                  <Circle
-                    key={idx}
-                    center={[location.lat, location.lng]}
-                    radius={location.intensity * 50000}
-                    pathOptions={{
-                      fillColor: getColor(location.intensity),
-                      fillOpacity: 0.5,
-                      color: getColor(location.intensity),
-                      weight: 2,
-                      opacity: 0.7,
-                    }}
-                  >
-                    <MapTooltip>
-                      Activity intensity: {Math.round(location.intensity * 100)}%
-                    </MapTooltip>
-                  </Circle>
-                );
-              })}
+                // Map to coordinates with density-based colors
+                return topLocations
+                  .filter((loc: any) => LOCATION_COORDS[loc.name])
+                  .map((loc: any, idx: number) => {
+                    const coords = LOCATION_COORDS[loc.name];
+                    const color = getLocationColor(loc.count, maxCount);
+                    const intensity = loc.count / maxCount;
+                    
+                    return (
+                      <Circle
+                        key={idx}
+                        center={coords}
+                        radius={intensity * 50000}
+                        pathOptions={{
+                          fillColor: color,
+                          fillOpacity: 0.5,
+                          color: color,
+                          weight: 2,
+                          opacity: 0.7,
+                        }}
+                      >
+                        <MapTooltip>
+                          <strong>{loc.name}</strong><br/>
+                          {loc.count} post{loc.count > 1 ? 's' : ''}
+                        </MapTooltip>
+                      </Circle>
+                    );
+                  });
+              })()}
             </MapContainer>
           </Box>
         </CardContent>

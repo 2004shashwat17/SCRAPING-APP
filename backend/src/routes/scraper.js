@@ -51,12 +51,36 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
     const posts = [];
     const engagers = {};
     const locations = {};
+    const monthlyPosts = {};
+    const yearlyPosts = {};
 
     // Parse CSV
     fs.createReadStream(edaFile)
       .pipe(csv())
       .on('data', (row) => {
         posts.push(row);
+        
+        // Parse dates for monthly/yearly breakdown
+        if (row.post_date && row.post_date.trim()) {
+          try {
+            const dateStr = row.post_date.trim();
+            const dateParts = dateStr.split(' ');
+            
+            if (dateParts.length >= 3) {
+              const month = dateParts[1];
+              const year = dateParts[2];
+              
+              // Track yearly
+              yearlyPosts[year] = (yearlyPosts[year] || 0) + 1;
+              
+              // Track monthly
+              const monthKey = `${month} ${year}`;
+              monthlyPosts[monthKey] = (monthlyPosts[monthKey] || 0) + 1;
+            }
+          } catch (e) {
+            // Skip invalid dates
+          }
+        }
         
         // Parse locations
         if (row.post_location && row.post_location.trim()) {
@@ -96,22 +120,46 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
           .slice(0, 10)
           .map(([name, count]) => ({ name, count }));
         
-        // Get location data for heatmap
-        const locationData = Object.entries(locations).map(([name, count]) => ({
+        // Get top 4 locations for heatmap
+        const topLocations = Object.entries(locations)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([name, count]) => ({ name, count }));
+        
+        // Get all locations for statistics dialog
+        const allLocations = Object.entries(locations).map(([name, count]) => ({
           name,
           count
         }));
+
+        // Get monthly breakdown
+        const monthlyData = Object.entries(monthlyPosts).map(([month, count]) => ({
+          month,
+          count
+        }));
+
+        // Get yearly breakdown
+        const yearlyData = Object.entries(yearlyPosts)
+          .sort((a, b) => parseInt(b[0]) - parseInt(a[0]))
+          .map(([year, count]) => ({
+            year: parseInt(year),
+            count
+          }));
         
         res.json({
           statistics: {
             totalPosts,
             totalLocations,
-            locations: locationData
+            locations: allLocations,
+            monthlyData,
+            yearlyData
           },
           engagement: {
             topEngagers
           },
-          locations: locationData
+          heatmap: {
+            topLocations
+          }
         });
       })
       .on('error', (error) => {

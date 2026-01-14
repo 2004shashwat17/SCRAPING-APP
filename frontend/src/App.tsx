@@ -10,7 +10,6 @@ import theme from './theme';
 import AuthPage from './components/auth/AuthPage';
 import SocialMediaPermissionModal from './components/auth/SocialMediaPermissionModal';
 import Dashboard from './components/Dashboard/Dashboard';
-import EdaDashboard from './components/Dashboard/EdaDashboard';
 import PostsView from './components/Posts/PostsView';
 import SettingsView from './components/Settings/SettingsView';
 import DataCollectionStatus from './components/DataCollection/DataCollectionStatus';
@@ -132,7 +131,6 @@ const AuthenticatedApp: React.FC = () => {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/eda-dashboard" element={<EdaDashboard />} />
               <Route path="/posts" element={<PostsView />} />
               <Route path="/social-accounts" element={<SocialAccountsOAuthView />} />
               <Route path="/social-accounts-oauth" element={<SocialAccountsOAuthView />} />
