@@ -23,32 +23,9 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
-import { MapContainer, TileLayer, Circle, Tooltip as MapTooltip } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import HeatmapMap from './HeatmapMap';
 import apiClient from '../../services/apiClient';
 import { useAuth } from '../../contexts/AuthContext';
-
-// Fix for default marker icons
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-});
-
-// Location coordinates mapping
-const LOCATION_COORDS: Record<string, [number, number]> = {
-  'New Delhi': [28.6139, 77.2090],
-  'Delhi': [28.6139, 77.2090],
-  'Mumbai': [19.0760, 72.8777],
-  'Dalhousie': [32.5437, 75.9472],
-  'Jammu, Katra': [32.9916, 74.9320],
-  'Jammu': [32.7266, 74.8570],
-  'Katra': [32.9916, 74.9320],
-  'Thailand': [15.8700, 100.9925],
-  'Ludhiana': [30.9010, 75.8573],
-};
 
 const activityClusters = [
   { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
@@ -122,22 +99,43 @@ const Dashboard: React.FC = () => {
 
   // Generate monthly data based on selected year
   const getMonthlyData = (year: number) => {
-    // Generate random but consistent data based on year
-    const seed = year;
-    return [
-      { month: 'Jan', posts: 50 + (seed * 7) % 40 },
-      { month: 'Feb', posts: 45 + (seed * 11) % 35 },
-      { month: 'Mar', posts: 60 + (seed * 13) % 45 },
-      { month: 'Apr', posts: 40 + (seed * 17) % 38 },
-      { month: 'May', posts: 55 + (seed * 19) % 42 },
-      { month: 'Jun', posts: 50 + (seed * 23) % 40 },
-      { month: 'Jul', posts: 58 + (seed * 29) % 43 },
-      { month: 'Aug', posts: 62 + (seed * 31) % 45 },
-      { month: 'Sep', posts: 52 + (seed * 37) % 41 },
-      { month: 'Oct', posts: 48 + (seed * 41) % 39 },
-      { month: 'Nov', posts: 44 + (seed * 43) % 37 },
-      { month: 'Dec', posts: 50 + (seed * 47) % 40 },
+    // If EDA monthly data is available, compute real counts per month for the selected year
+    const monthOrder = [
+      { full: 'January', short: 'Jan' },
+      { full: 'February', short: 'Feb' },
+      { full: 'March', short: 'Mar' },
+      { full: 'April', short: 'Apr' },
+      { full: 'May', short: 'May' },
+      { full: 'June', short: 'Jun' },
+      { full: 'July', short: 'Jul' },
+      { full: 'August', short: 'Aug' },
+      { full: 'September', short: 'Sep' },
+      { full: 'October', short: 'Oct' },
+      { full: 'November', short: 'Nov' },
+      { full: 'December', short: 'Dec' },
     ];
+
+    const result = monthOrder.map(m => ({ month: m.short, posts: 0 }));
+
+    const monthlyData = edaData?.statistics?.monthlyData || [];
+    if (Array.isArray(monthlyData) && monthlyData.length > 0) {
+      monthlyData.forEach((entry: any) => {
+        // entry.month is like 'October 2025' (from backend)
+        if (!entry.month || !entry.count) return;
+        const parts = String(entry.month).trim().split(' ');
+        if (parts.length < 2) return;
+        const monthName = parts[0];
+        const entryYear = parseInt(parts[1], 10);
+        if (entryYear !== year) return;
+        // Find index in monthOrder
+        const idx = monthOrder.findIndex(m => m.full.toLowerCase().startsWith(monthName.toLowerCase()) || m.short.toLowerCase() === monthName.toLowerCase());
+        if (idx >= 0) {
+          result[idx].posts = entry.count;
+        }
+      });
+    }
+
+    return result;
   };
 
   const handleYearChange = (event: any) => {
@@ -162,7 +160,21 @@ const Dashboard: React.FC = () => {
       if (user?.id) {
         try {
           const data = await apiClient.getEdaDashboardStats(user.id, 'shaswat');
-          setEdaData(data);
+          // --- Robust EDA posts extraction for HeatmapMap ---
+          // 1. Try data.posts (raw posts)
+          // 2. Try data.heatmap.topLocations (aggregated)
+          // 3. Try data.statistics.locations (aggregated)
+          // 4. Fallback: empty array
+          let posts = [];
+          if (Array.isArray(data.posts) && data.posts.length > 0) {
+            posts = data.posts.filter((p: any) => p.post_location);
+          } else if (Array.isArray(data.heatmap?.topLocations) && data.heatmap.topLocations.length > 0) {
+            posts = data.heatmap.topLocations.map((loc: any) => ({ post_location: loc.name, count: loc.count }));
+          } else if (Array.isArray(data.statistics?.locations) && data.statistics.locations.length > 0) {
+            posts = data.statistics.locations.map((loc: any) => ({ post_location: loc.name, count: loc.count }));
+          }
+          // Always set posts array for HeatmapMap
+          setEdaData({ ...data, posts });
           
           // Set dashboard data from EDA
           setDashboardData({
@@ -609,11 +621,7 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pl: 5.5 }}>
-                {[
-                  { year: '2025', posts: 423 },
-                  { year: '2024', posts: 312 },
-                  { year: '2023', posts: 112 },
-                ].map((yearData, idx) => (
+                {(edaData?.statistics?.yearlyData || []).map((yearData: any, idx: number) => (
                   <Box
                     key={idx}
                     sx={{
@@ -639,7 +647,7 @@ const Dashboard: React.FC = () => {
                         fontSize: '1.1rem',
                       }}
                     >
-                      {yearData.posts} posts
+                      {yearData.count} posts
                     </Typography>
                   </Box>
                 ))}
@@ -1005,101 +1013,21 @@ const Dashboard: React.FC = () => {
         </GlassCard>
       </Box>
 
-      {/* Location Heatmap */}
+      {/* Location Heatmap (deck.gl) */}
       <GlassCard priority={true}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 0.5 }}>
-                📍 Activity Locations Heatmap
+                📍 Activity Locations Heatmap (OpenStreetMap)
               </Typography>
               <Typography variant="body2" sx={{ color: '#C9CED6' }}>
-                Shows where your child is most active based on post locations
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              {['Last 7 days', '30 days', 'All time'].map((filter, idx) => (
-                <Chip
-                  key={idx}
-                  label={filter}
-                  onClick={() => {}}
-                  sx={{
-                    background: idx === 2 ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                    color: idx === 2 ? '#a78bfa' : '#C9CED6',
-                    border: idx === 2 ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.2)',
-                    fontWeight: idx === 2 ? 700 : 500,
-                    fontSize: '0.75rem',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer',
-                    '&:hover': {
-                      background: 'rgba(139, 92, 246, 0.3)',
-                      color: '#a78bfa',
-                      border: '1px solid rgba(139, 92, 246, 0.5)',
-                    },
-                  }}
-                />
-              ))}
-            </Box>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ff0000' }} />
-              <Typography variant="body2" sx={{ color: '#C9CED6', fontWeight: 600 }}>
-                High activity: New Delhi, Mumbai
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#ffaa00' }} />
-              <Typography variant="body2" sx={{ color: '#C9CED6', fontWeight: 600 }}>
-                Moderate activity: Ludhiana
+                Shows where your child is most active based on post locations. Powered by OpenStreetMap for accurate, free, and up-to-date mapping.
               </Typography>
             </Box>
           </Box>
-          <Box sx={{ height: 550, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-            <MapContainer
-              center={[26, 76]}
-              zoom={5}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              {(() => {
-                // Get top 4 locations from EDA data
-                const topLocations = edaData?.heatmap?.topLocations || [];
-                const maxCount = topLocations.length > 0 ? topLocations[0].count : 1;
-                
-                // Map to coordinates with density-based colors
-                return topLocations
-                  .filter((loc: any) => LOCATION_COORDS[loc.name])
-                  .map((loc: any, idx: number) => {
-                    const coords = LOCATION_COORDS[loc.name];
-                    const color = getLocationColor(loc.count, maxCount);
-                    const intensity = loc.count / maxCount;
-                    
-                    return (
-                      <Circle
-                        key={idx}
-                        center={coords}
-                        radius={intensity * 50000}
-                        pathOptions={{
-                          fillColor: color,
-                          fillOpacity: 0.5,
-                          color: color,
-                          weight: 2,
-                          opacity: 0.7,
-                        }}
-                      >
-                        <MapTooltip>
-                          <strong>{loc.name}</strong><br/>
-                          {loc.count} post{loc.count > 1 ? 's' : ''}
-                        </MapTooltip>
-                      </Circle>
-                    );
-                  });
-              })()}
-            </MapContainer>
+            <Box sx={{ height: 600, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+            <HeatmapMap width="100%" height={600} edaData={edaData} />
           </Box>
         </CardContent>
       </GlassCard>

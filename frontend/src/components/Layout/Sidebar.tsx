@@ -16,7 +16,7 @@ import {
   Security as ThreatIcon,
   AccountCircle as SocialIcon,
   Analytics as AnalyticsIcon,
-  Dashboard as DashboardIcon,
+  // Dashboard icon removed (unused) to fix eslint warning
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
