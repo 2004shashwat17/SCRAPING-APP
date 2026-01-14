@@ -43,6 +43,10 @@ app.use('/api/oauth', oauthRoutes);
 const scraperRoutes = require('./routes/scraper');
 app.use('/api/scraper', scraperRoutes);
 
+// Geocode routes (server-side geocoding and caching)
+const geocodeRoutes = require('./routes/geocode');
+app.use('/api/geocode', geocodeRoutes);
+
 // TODO: Add posts, dashboard, settings routes
 
 app.listen(PORT, () => {

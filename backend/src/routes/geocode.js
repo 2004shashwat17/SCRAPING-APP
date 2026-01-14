@@ -55,15 +55,11 @@ router.post('/', async (req, res) => {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(loc)}`;
         const r = await axios.get(url, { headers: { 'Accept-Language': 'en' }, timeout: 5000 });
         const data = r.data;
-          if (Array.isArray(data) && data.length > 0) {
-            const top = data[0];
-            if (top && top.lat && top.lon) {
-              cache[loc] = [parseFloat(top.lat), parseFloat(top.lon)];
-              normalizedMap[loc] = cache[loc];
-            } else {
-              cache[loc] = null;
-              normalizedMap[loc] = null;
-            }
+        if (Array.isArray(data) && data.length > 0) {
+          const top = data[0];
+          if (top && top.lat && top.lon) {
+            cache[loc] = [parseFloat(top.lat), parseFloat(top.lon)];
+            normalizedMap[loc] = cache[loc];
           } else {
             cache[loc] = null;
             normalizedMap[loc] = null;
