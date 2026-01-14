@@ -118,6 +118,18 @@ const SocialMediaPermissionModal: React.FC<PermissionModalProps> = ({
     onPermissionGranted(permissions);
     onClose();
 
+    // Record consent on the backend (non-blocking)
+    try {
+      const username = (await apiClient.getCurrentUser()).username;
+      await apiClient.post('/api/consent', {
+        platforms: enabledPlatforms,
+        agreedToTerms: true,
+        metadata: { grantedBy: username },
+      });
+    } catch (err) {
+      console.error('Failed to record consent on backend:', err);
+    }
+
     // Optionally, still try to call the backend, but don't block UI on it
     try {
       await apiClient.updatePermissions({ platforms: enabledPlatforms });
