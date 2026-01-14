@@ -179,54 +179,33 @@ const HeatmapMap: React.FC<HeatmapMapProps> = ({ edaData, width = 900, height = 
 
     let cancelled = false;
 
-    const geocodeOne = async (location: string) => {
+    const run = async () => {
       try {
-        // Try raw location first (no forced country) to allow non-India cities like 'Thailand' to resolve
-        const q = `${location}`;
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const top = data[0];
-          // Accept the top result (no country forced). Ensure lat/lon exist.
-          if (top && top.lat && top.lon) {
-            return [parseFloat(top.lat), parseFloat(top.lon)];
-          }
+        const base = process.env.REACT_APP_BACKEND_URL || '';
+        const resp = await fetch(`${base}/api/geocode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locations: unmatched }),
+        });
+        if (!resp.ok) {
+          // fallback: do nothing
+          return;
         }
-        // As a fallback, try adding "India" (helps ambiguous short names)
-        const qIndia = `${location}, India`;
-        const url2 = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(qIndia)}`;
-        const res2 = await fetch(url2, { headers: { 'Accept-Language': 'en' } });
-        if (!res2.ok) return null;
-        const data2 = await res2.json();
-        if (Array.isArray(data2) && data2.length > 0) {
-          const top2 = data2[0];
-          if (top2 && top2.lat && top2.lon) return [parseFloat(top2.lat), parseFloat(top2.lon)];
+        const json = await resp.json();
+        const results = json.results || {};
+        const newEntries: Record<string, [number, number]> = {};
+        Object.entries(results).forEach(([loc, coords]) => {
+          if (coords && Array.isArray(coords) && coords.length === 2) {
+            newEntries[loc] = [coords[0], coords[1]];
+          }
+        });
+        if (!cancelled && Object.keys(newEntries).length > 0) {
+          setExtraCoords(prev => ({ ...prev, ...newEntries }));
+          // eslint-disable-next-line no-console
+          console.log('Server geocoded and cached locations:', Object.keys(newEntries));
         }
       } catch (e) {
-        // ignore
-      }
-      return null;
-    };
-
-    const run = async () => {
-      const newEntries: Record<string, [number, number]> = {};
-      // Limit number to avoid abusive usage
-      const limit = Math.min(unmatched.length, 10);
-      for (let i = 0; i < limit; i++) {
-        const raw = unmatched[i];
-        const coords = await geocodeOne(raw);
-        if (coords && !cancelled) {
-          newEntries[raw] = coords as [number, number];
-          // small delay between requests
-          await new Promise(r => setTimeout(r, 800));
-        }
-      }
-      if (!cancelled && Object.keys(newEntries).length > 0) {
-        setExtraCoords(prev => ({ ...prev, ...newEntries }));
-        // eslint-disable-next-line no-console
-        console.log('Geocoded and cached locations:', Object.keys(newEntries));
+        // ignore errors
       }
     };
 
