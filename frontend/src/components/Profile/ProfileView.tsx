@@ -61,22 +61,41 @@ const ProfileView: React.FC = () => {
     user?.avatar || AVATAR_OPTIONS[0]
   );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [consents, setConsents] = useState<any[]>([]);
+  const [loadingConsents, setLoadingConsents] = useState(false);
+  const [consentsError, setConsentsError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSocialAccounts();
+    loadConsents();
   }, []);
+
+  const loadConsents = async () => {
+    try {
+      setLoadingConsents(true);
+      setConsentsError(null);
+      const resp = await apiClient.get<any>('/api/consent');
+      setConsents(resp.data.consents || []);
+    } catch (e: any) {
+      console.error('Failed to load consents', e);
+      setConsentsError(e.message || 'Failed to load consents');
+    } finally {
+      setLoadingConsents(false);
+    }
+  };
 
   const loadSocialAccounts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<OAuthAccountsResponse>('/oauth/accounts');
+      const response = await apiClient.get<OAuthAccountsResponse>('/api/oauth/accounts');
       setSocialAccounts(response.data.accounts || []);
       setError(null); // Clear any previous errors
     } catch (err: any) {
       console.error('Error loading social accounts:', err);
       // Don't show error by default, only on actual failures
       if (err.response?.status !== 401) {
-        console.log('Could not load social accounts:', err.message);
+        console.log('Could not load social accounts:', err.message || err);
+        setError('Failed to load social accounts');
       }
     } finally {
       setLoading(false);
@@ -99,7 +118,7 @@ const ProfileView: React.FC = () => {
       setTimeout(() => setSuccessMessage(null), 3000);
       // Trigger a page refresh to update avatar everywhere
       window.dispatchEvent(new Event('avatarChanged'));
-      window.location.reload();
+      // No full reload — AuthContext listens for 'avatarChanged' and will refresh user data
     } catch (err) {
       console.error('Failed to update avatar:', err);
       setError('Failed to update avatar');
@@ -159,6 +178,32 @@ const ProfileView: React.FC = () => {
           {successMessage}
         </Alert>
       )}
+
+      {/* Consents panel */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>Consent & Permissions</Typography>
+        <Card sx={{ mb: 1 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="body2">Recorded consents for your account</Typography>
+              <Box>
+                <Button size="small" onClick={loadConsents} disabled={loadingConsents}>
+                  {loadingConsents ? 'Refreshing...' : 'Refresh'}
+                </Button>
+              </Box>
+            </Box>
+            {consentsError && <Alert severity="error">{consentsError}</Alert>}
+            {!loadingConsents && consents.length === 0 && <Typography variant="body2">No consents recorded yet.</Typography>}
+            {consents.map((c, idx) => (
+              <Box key={idx} sx={{ p: 1, borderRadius: 1, background: 'rgba(0,0,0,0.03)', mb: 1 }}>
+                <Typography variant="subtitle2">{c.username || 'You'} — {new Date(c.createdAt).toLocaleString()}</Typography>
+                <Typography variant="body2">Platforms: {(c.platforms || []).join(', ') || 'None'}</Typography>
+                <Typography variant="caption" color="text.secondary">Agreed: {c.agreedToTerms ? 'Yes' : 'No'}</Typography>
+              </Box>
+            ))}
+          </CardContent>
+        </Card>
+      </Box>
 
       <Card 
         variant="outlined" 

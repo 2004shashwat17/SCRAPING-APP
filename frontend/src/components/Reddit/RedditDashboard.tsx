@@ -62,7 +62,7 @@ const RedditDashboard: React.FC = () => {
   const loadRedditData = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<RedditAccount>('/oauth/reddit/data');
+      const response = await apiClient.get<RedditAccount>('/api/oauth/reddit/data');
       setData(response.data);
     } catch (err: any) {
       console.error('Error loading Reddit data:', err);

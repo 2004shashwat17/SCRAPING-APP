@@ -44,7 +44,7 @@ const SocialAccountsOAuthView: React.FC = () => {
   const loadAccounts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<OAuthAccountsResponse>('/oauth/accounts');
+      const response = await apiClient.get<OAuthAccountsResponse>('/api/oauth/accounts');
       setAccounts(response.data.accounts || []);
       setCurrentUser(response.data.user || null);
       setError(null); // Clear any previous errors on success
