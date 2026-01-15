@@ -51,15 +51,32 @@ const AVATAR_OPTIONS = [
   'https://api.dicebear.com/7.x/avataaars/svg?seed=Oliver&backgroundColor=ffdfbf',
 ];
 
+// A simple inline SVG placeholder that prompts the user to "Choose avatar".
+// Encoded as a data URL so it's always available offline and copyright-free.
+const CHOOSE_AVATAR_SVG = encodeURIComponent(`
+  <svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 256 256'>
+    <rect width='100%' height='100%' fill='#f3f4f6' rx='16' />
+    <g transform='translate(32,32)'>
+      <circle cx='96' cy='64' r='48' fill='#e5e7eb' />
+      <rect x='32' y='128' width='128' height='24' rx='12' fill='#e5e7eb' />
+      <text x='96' y='210' font-family='Segoe UI, Roboto, Arial' font-size='18' fill='#6b7280' text-anchor='middle'>Choose avatar</text>
+    </g>
+  </svg>
+`);
+const CHOOSE_AVATAR = `data:image/svg+xml;utf8,${CHOOSE_AVATAR_SVG}`;
+
 const ProfileView: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
+  // Default to empty for new users so they see a "Choose avatar" prompt
   const [selectedAvatar, setSelectedAvatar] = useState<string>(
-    user?.avatar || AVATAR_OPTIONS[0]
+    // Priority: server avatar > local cached avatar > choose-avatar placeholder > first dicebear option
+    user?.avatar || localStorage.getItem('userAvatar') || CHOOSE_AVATAR || AVATAR_OPTIONS[0]
   );
+  const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [consents, setConsents] = useState<any[]>([]);
   const [loadingConsents, setLoadingConsents] = useState(false);
@@ -68,7 +85,12 @@ const ProfileView: React.FC = () => {
   useEffect(() => {
     loadSocialAccounts();
     loadConsents();
-  }, []);
+    // If this is a fresh login (no server avatar and no cached avatar), set the "Choose avatar" placeholder
+    if (!user?.avatar && !localStorage.getItem('userAvatar')) {
+      localStorage.setItem('userAvatar', CHOOSE_AVATAR);
+      setSelectedAvatar(CHOOSE_AVATAR);
+    }
+  }, [user?.avatar]);
 
   const loadConsents = async () => {
     try {
@@ -108,6 +130,19 @@ const ProfileView: React.FC = () => {
 
   const handleAvatarChange = (avatar: string) => {
     setSelectedAvatar(avatar);
+    setUploadedAvatar(null);
+  };
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setUploadedAvatar(ev.target?.result as string);
+        setSelectedAvatar(ev.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveAvatar = async () => {
@@ -230,8 +265,12 @@ const ProfileView: React.FC = () => {
           {/* Avatar with Edit Button */}
           <Box sx={{ display: 'flex', alignItems: 'flex-end', mb: 3, mt: -5 }}>
             <Box sx={{ position: 'relative' }}>
+              {/**
+               * If the user has no avatar yet, show a "Choose" placeholder
+               * rather than pre-populating a DiceBear avatar.
+               */}
               <Avatar
-                src={user?.avatar || selectedAvatar}
+                src={(user?.avatar || selectedAvatar) || undefined}
                 sx={{
                   width: 100,
                   height: 100,
@@ -244,7 +283,10 @@ const ProfileView: React.FC = () => {
                   boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
                 }}
               >
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
+                { (user?.avatar || selectedAvatar || uploadedAvatar)
+                  ? (user?.username?.charAt(0).toUpperCase() || 'U')
+                  : 'Choose'
+                }
               </Avatar>
               <IconButton
                 size="small"
@@ -410,6 +452,7 @@ const ProfileView: React.FC = () => {
         <DialogTitle>Choose Your Avatar</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mt: 2 }}>
+            {/* Avatar options */}
             {AVATAR_OPTIONS.map((avatar, index) => (
               <Box
                 key={index}
@@ -437,6 +480,27 @@ const ProfileView: React.FC = () => {
                 />
               </Box>
             ))}
+            {/* Upload image option */}
+            <Box sx={{ gridColumn: 'span 3', mt: 2, textAlign: 'center' }}>
+              <input
+                accept="image/*"
+                style={{ display: 'none' }}
+                id="avatar-upload-input"
+                type="file"
+                onChange={handleAvatarUpload}
+              />
+              <label htmlFor="avatar-upload-input">
+                <Button variant="outlined" component="span">
+                  Upload Image
+                </Button>
+              </label>
+              {uploadedAvatar && (
+                <Box mt={2}>
+                  <Typography variant="caption" color="text.secondary">Preview:</Typography>
+                  <Avatar src={uploadedAvatar} sx={{ width: 64, height: 64, mx: 'auto', mt: 1 }} />
+                </Box>
+              )}
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
