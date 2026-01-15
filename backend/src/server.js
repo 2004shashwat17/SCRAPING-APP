@@ -29,8 +29,6 @@ app.get('/', (req, res) => {
   res.send('API is running');
 });
 
-
-
 // Auth routes
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
@@ -46,6 +44,10 @@ app.use('/api/scraper', scraperRoutes);
 // Geocode routes (server-side geocoding and caching)
 const geocodeRoutes = require('./routes/geocode');
 app.use('/api/geocode', geocodeRoutes);
+
+// Consent routes
+const consentRoutes = require('./routes/consent');
+app.use('/api/consent', consentRoutes);
 
 // TODO: Add posts, dashboard, settings routes
 

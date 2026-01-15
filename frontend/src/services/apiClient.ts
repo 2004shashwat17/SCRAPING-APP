@@ -111,7 +111,16 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`;
+    // Normalize URL to avoid duplicate '/api' when baseURL already contains it
+    let ep = endpoint;
+    try {
+      if (this.baseURL.endsWith('/api') && ep.startsWith('/api')) {
+        ep = ep.replace(/^\/api/, '');
+      }
+    } catch (e) {
+      // ignore
+    }
+    const url = `${this.baseURL}${ep}`;
     const config: RequestInit = {
       headers: this.getHeaders(),
       ...options,
@@ -210,14 +219,14 @@ class ApiClient {
 
   // Permissions endpoints
   async updatePermissions(permissions: { platforms: string[] }): Promise<any> {
-    return this.request('/auth/permissions', {
+    return this.request('/api/auth/permissions', {
       method: 'POST',
       body: JSON.stringify(permissions),
     });
   }
 
   async getPermissions(): Promise<any> {
-    return this.request('/auth/permissions');
+    return this.request('/api/auth/permissions');
   }
 
   // Data collection endpoint

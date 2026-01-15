@@ -66,9 +66,19 @@ const AuthenticatedApp: React.FC = () => {
   React.useEffect(() => {
     const checkUserPermissions = async () => {
       try {
-        const permissions = await apiClient.getPermissions();
-        // If user has no enabled platforms, show permission modal
-        if (!permissions.enabled_platforms || permissions.enabled_platforms.length === 0) {
+        // Avoid showing modal if user already granted permissions (per-user local flag)
+          const userId = user?.id;
+          // Check per-user flag first, then fallback to global flag
+          if (userId && localStorage.getItem(`permissionsGranted_${userId}`) === 'true') return;
+          if (userId && localStorage.getItem('permissionsGranted') === 'true') {
+            // promote global flag to per-user to avoid repeat prompting
+            localStorage.setItem(`permissionsGranted_${userId}`, 'true');
+            return;
+          }
+        // Check backend consents for this user
+        const resp = await apiClient.get<any>('/api/consent');
+        const consents = resp.data?.consents || [];
+        if (!consents || consents.length === 0) {
           setShowPermissionModal(true);
         }
       } catch (error) {
@@ -87,23 +97,47 @@ const AuthenticatedApp: React.FC = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  const handlePermissionGranted = async (permissions: { [key: string]: boolean }) => {
+  const handlePermissionGranted = async (payload: any) => {
     try {
-      // Convert boolean permissions to array of platform names
-      const enabledPlatforms = Object.entries(permissions)
-        .filter(([_, enabled]) => enabled)
-        .map(([platform, _]) => platform);
-      
-      await apiClient.updatePermissions({ platforms: enabledPlatforms });
+      // payload can be either { platforms: string[], agreedToTerms: boolean } or the older permissions map
+      let enabledPlatforms: string[] = [];
+      let agreedToTerms = false;
+      if (Array.isArray(payload?.platforms)) {
+        enabledPlatforms = payload.platforms;
+        agreedToTerms = Boolean(payload.agreedToTerms);
+      } else if (payload && typeof payload === 'object') {
+        // convert map to array
+        enabledPlatforms = Object.entries(payload)
+          .filter(([_, enabled]) => enabled)
+          .map(([platform, _]) => platform);
+      }
+
+      // Record consent on backend for authenticated users
+      try {
+        await apiClient.post('/api/consent', {
+          platforms: enabledPlatforms,
+          agreedToTerms: agreedToTerms,
+          metadata: { grantedBy: (user && user.username) || 'unknown' },
+        });
+      } catch (e) {
+        console.error('Failed to record consent on backend:', e);
+      }
+
+      // Set per-user local flag so modal won't reappear
+      try {
+        if (user?.id) {
+          localStorage.setItem(`permissionsGranted_${user.id}`, 'true');
+        }
+      } catch (e) {
+        // ignore
+      }
+
       setShowPermissionModal(false);
-      
       // Redirect to social accounts page for OAuth authentication
       navigate('/social-accounts');
-      
       console.log('Permissions granted for platforms:', enabledPlatforms);
     } catch (error) {
-      console.error('Failed to update permissions:', error);
-      // Handle error - maybe show a notification
+      console.error('Failed to process permissions:', error);
     }
   };
 
@@ -182,9 +216,10 @@ const AuthRedirector: React.FC<{ isAuthenticated: boolean }> = ({ isAuthenticate
     const decideRedirect = async () => {
       if (!isAuthenticated) return;
       try {
-        const perms = await apiClient.getPermissions();
-        const enabled = perms.data?.enabled_platforms || [];
-        if (!enabled || enabled.length === 0) {
+        // Prefer server-side consent check
+        const resp = await apiClient.get<any>('/api/consent');
+        const consents = resp.data?.consents || [];
+        if (!consents || consents.length === 0) {
           if (location.pathname === '/' || location.pathname.startsWith('/login') || location.pathname.startsWith('/auth')) {
             navigate('/social-accounts');
           }

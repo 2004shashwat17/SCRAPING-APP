@@ -78,6 +78,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => window.removeEventListener('auth:token_set', onTokenSet);
   }, []);
 
+  // Note: we attach 'avatarChanged' listener above; ensure removal on unmount
+  useEffect(() => {
+    const onAvatarChanged = async () => {
+      try {
+        const userData = await apiClient.getCurrentUser();
+        setUser(userData);
+      } catch (e) {
+        console.error('Failed to refresh user after avatar change', e);
+      }
+    };
+    window.addEventListener('avatarChanged', onAvatarChanged as EventListener);
+    return () => window.removeEventListener('avatarChanged', onAvatarChanged as EventListener);
+  }, []);
+
   const login = async (username: string, password: string): Promise<AuthResponse> => {
     try {
       setError(null);

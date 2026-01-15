@@ -117,6 +117,8 @@ const ProfileView: React.FC = () => {
       setSuccessMessage('Avatar updated successfully!');
       setTimeout(() => setSuccessMessage(null), 3000);
       // Trigger a page refresh to update avatar everywhere
+      // Update local cache and notify listeners
+      localStorage.setItem('userAvatar', selectedAvatar);
       window.dispatchEvent(new Event('avatarChanged'));
       // No full reload — AuthContext listens for 'avatarChanged' and will refresh user data
     } catch (err) {

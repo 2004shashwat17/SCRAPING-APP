@@ -11,7 +11,14 @@ const UserSchema = new mongoose.Schema({
   facebookEmail: { type: String }, // Facebook email
   facebookConnected: { type: Boolean, default: false },
   facebookConnectedAt: { type: Date },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  // Embedded consents (moved from separate Consent model)
+  consents: [new mongoose.Schema({
+    username: { type: String },
+    platforms: [{ type: String }],
+    agreedToTerms: { type: Boolean, default: false },
+    metadata: { type: Object, default: {} },
+  }, { timestamps: true })]
 });
 
 module.exports = mongoose.model('User', UserSchema);

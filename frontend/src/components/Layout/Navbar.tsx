@@ -143,7 +143,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             color="inherit"
           >
             <Avatar
-              src={userAvatar}
+              src={user?.avatar || userAvatar}
               sx={{
                 width: 32,
                 height: 32,

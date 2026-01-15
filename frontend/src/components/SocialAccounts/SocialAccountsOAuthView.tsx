@@ -140,14 +140,28 @@ const SocialAccountsOAuthView: React.FC = () => {
       setDisconnecting(platform);
       setError(null);
 
-      // Map frontend platform names to backend API names
-      await apiClient.delete(`/oauth/disconnect/${platform}`);
+      // Try primary disconnect endpoint
+      const endpointPrimary = `/api/oauth/disconnect/${platform}`;
+      const endpointFallback = `/api/v1/oauth/disconnect/${platform}`;
+      try {
+        // Helpful debug log
+        console.log('Attempting disconnect at', endpointPrimary);
+        await apiClient.delete(endpointPrimary);
+      } catch (primaryErr: any) {
+        // If primary failed with 404, try fallback
+        if (primaryErr && primaryErr.message && primaryErr.message.includes('status: 404')) {
+          console.warn('Primary disconnect endpoint returned 404, trying fallback', endpointFallback);
+          await apiClient.delete(endpointFallback);
+        } else {
+          throw primaryErr;
+        }
+      }
 
       // Refresh accounts after disconnect
       await loadAccounts();
     } catch (err: any) {
       console.error('Error disconnecting:', err);
-      setError(err.response?.data?.detail || 'Failed to disconnect');
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to disconnect');
     } finally {
       setDisconnecting(null);
     }

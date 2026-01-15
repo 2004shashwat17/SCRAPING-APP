@@ -33,6 +33,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import apiClient from '../../services/apiClient';
+import { useAuth } from '../../contexts/AuthContext';
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -70,6 +71,7 @@ const SocialMediaPermissionModal: React.FC<PermissionModalProps> = ({
   onClose,
   onPermissionGranted,
 }) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([
@@ -112,15 +114,25 @@ const SocialMediaPermissionModal: React.FC<PermissionModalProps> = ({
 
     // Update localStorage for immediate UI feedback
     localStorage.setItem('socialMediaPermissions', JSON.stringify(permissions));
-    localStorage.setItem('permissionsGranted', 'true');
+    // Set per-user flag immediately so modal won't reappear
+    try {
+      if (user?.id) {
+        localStorage.setItem(`permissionsGranted_${user.id}`, 'true');
+      } else {
+        localStorage.setItem('permissionsGranted', 'true');
+      }
+    } catch (e) {
+      localStorage.setItem('permissionsGranted', 'true');
+    }
 
     setLoading(false);
     onPermissionGranted(permissions);
     onClose();
 
-    // Record consent on the backend (non-blocking)
+    // Record consent on the backend (non-blocking) using the consent API
     try {
-      const username = (await apiClient.getCurrentUser()).username;
+      const me = await apiClient.getCurrentUser();
+      const username = me?.username || 'unknown';
       await apiClient.post('/api/consent', {
         platforms: enabledPlatforms,
         agreedToTerms: true,
@@ -128,24 +140,27 @@ const SocialMediaPermissionModal: React.FC<PermissionModalProps> = ({
       });
     } catch (err) {
       console.error('Failed to record consent on backend:', err);
-    }
-
-    // Optionally, still try to call the backend, but don't block UI on it
-    try {
-      await apiClient.updatePermissions({ platforms: enabledPlatforms });
-    } catch (error) {
-      console.error('Error saving permissions:', error);
-      // Optionally show an error message, but popup will close regardless
+      // ensure at least a local flag is set so it doesn't keep prompting
+      try {
+        if (user?.id) localStorage.setItem(`permissionsGranted_${user.id}`, 'true');
+        localStorage.setItem('permissionsGranted', 'true');
+      } catch (e) {
+        // ignore
+      }
     }
   };
 
   const handleSkip = async () => {
-    try {
-      // Send empty platforms array to backend (no permissions granted)
-      await apiClient.updatePermissions({ platforms: [] });
-    } catch (error) {
-      console.error('Error saving skip permissions:', error);
-    }
+      try {
+        const username = (await apiClient.getCurrentUser()).username;
+        await apiClient.post('/api/consent', {
+          platforms: [],
+          agreedToTerms: false,
+          metadata: { grantedBy: username },
+        });
+      } catch (error) {
+        console.error('Error saving skip permissions:', error);
+      }
 
     // Set default permissions for localStorage (all disabled)
     const permissions = platforms.reduce((acc, platform) => {
@@ -154,7 +169,18 @@ const SocialMediaPermissionModal: React.FC<PermissionModalProps> = ({
     }, {} as { [key: string]: boolean });
 
     localStorage.setItem('socialMediaPermissions', JSON.stringify(permissions));
-    localStorage.setItem('permissionsGranted', 'true');
+    try {
+      const me = await apiClient.getCurrentUser();
+      const userId = me?.id;
+      // Set generic flag and let App set per-user flag when it runs
+      if (userId) {
+        localStorage.setItem(`permissionsGranted_${userId}`, 'true');
+      } else {
+        localStorage.setItem('permissionsGranted', 'true');
+      }
+    } catch (e) {
+      localStorage.setItem('permissionsGranted', 'true');
+    }
     
     onPermissionGranted(permissions);
     onClose();
