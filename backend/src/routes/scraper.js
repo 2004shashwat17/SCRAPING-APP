@@ -66,19 +66,85 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
       }
     }
 
-    // Fallback: pick the newest eda_*.csv in the user's directory
+    // Fallback: prefer cleaned 1_<fbid>.csv, else if raw 0_<fbid>.csv exists, trigger EDA generation
     if (!edaFile) {
-      const files = fs.readdirSync(scraperOutputDir).filter(f => f.startsWith('eda_') && f.endsWith('.csv'));
-      if (files.length === 0) {
-        return res.status(404).json({ error: 'EDA file not found for this user' });
+      // look for cleaned files first
+      const cleanedFiles = fs.readdirSync(scraperOutputDir).filter(f => f.startsWith('1_') && f.endsWith('.csv'));
+      if (cleanedFiles.length > 0) {
+        cleanedFiles.sort((a, b) => {
+          const sa = fs.statSync(path.join(scraperOutputDir, a)).mtime.getTime();
+          const sb = fs.statSync(path.join(scraperOutputDir, b)).mtime.getTime();
+          return sb - sa;
+        });
+        edaFile = path.join(scraperOutputDir, cleanedFiles[0]);
+      } else {
+        // if no cleaned file, see if raw scraped 0_<fbid>.csv exists and trigger generator
+        const rawFiles = fs.readdirSync(scraperOutputDir).filter(f => f.startsWith('0_') && f.endsWith('.csv'));
+        if (rawFiles.length > 0) {
+          rawFiles.sort((a, b) => {
+            const sa = fs.statSync(path.join(scraperOutputDir, a)).mtime.getTime();
+            const sb = fs.statSync(path.join(scraperOutputDir, b)).mtime.getTime();
+            return sb - sa;
+          });
+          const chosenRaw = rawFiles[0];
+          const fbidMatch = chosenRaw.match(/^0_(\d+)\.csv$/);
+          const fbid = fbidMatch ? fbidMatch[1] : null;
+
+          const statusFile = path.join(scraperOutputDir, 'eda.status.json');
+          const outputName = fbid ? `1_${fbid}.csv` : `1_${Date.now()}.csv`;
+          const outputPath = path.join(scraperOutputDir, outputName);
+
+          // if already processing same input -> return 202
+          try {
+            if (fs.existsSync(statusFile)) {
+              const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+              if (status && status.status === 'processing' && status.input === chosenRaw) {
+                return res.status(202).json({ status: 'processing', message: 'EDA generation in progress' });
+              }
+            }
+          } catch (e) {
+            console.error('Failed reading status file', e);
+          }
+
+          // write processing status and spawn generator
+          const statusPayload = { status: 'processing', input: chosenRaw, output: outputName, startedAt: new Date().toISOString() };
+          try { fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2)); } catch (e) { console.error('Failed to write status file:', e); }
+
+          const pythonCmd = process.env.PYTHON_PATH || 'python3';
+          const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'generate_eda.py');
+          try {
+            const child = require('child_process').spawn(pythonCmd, [scriptPath, '--input', path.join(scraperOutputDir, chosenRaw), '--output', outputPath], { detached: false });
+            child.stdout.on('data', (d) => console.log('[generate_eda]', d.toString()));
+            child.stderr.on('data', (d) => console.error('[generate_eda]', d.toString()));
+            child.on('close', (code) => {
+              try {
+                if (code === 0 && fs.existsSync(outputPath)) {
+                  fs.writeFileSync(statusFile, JSON.stringify({ status: 'done', input: chosenRaw, output: outputName, finishedAt: new Date().toISOString() }, null, 2));
+                } else {
+                  fs.writeFileSync(statusFile, JSON.stringify({ status: 'failed', input: chosenRaw, output: outputName, finishedAt: new Date().toISOString(), code }, null, 2));
+                }
+              } catch (e) { console.error('Failed to update status file on child close:', e); }
+            });
+          } catch (e) {
+            console.error('Failed to spawn EDA generator:', e);
+            try { fs.writeFileSync(statusFile, JSON.stringify({ status: 'failed', input: chosenRaw, output: outputName, message: String(e), finishedAt: new Date().toISOString() }, null, 2)); } catch (ee) { }
+          }
+
+          return res.status(202).json({ status: 'processing', message: 'EDA generation started' });
+        }
+
+        // fall back to legacy eda_*.csv files
+        const files = fs.readdirSync(scraperOutputDir).filter(f => f.startsWith('eda_') && f.endsWith('.csv'));
+        if (files.length === 0) {
+          return res.status(404).json({ error: 'EDA file not found for this user' });
+        }
+        files.sort((a, b) => {
+          const sa = fs.statSync(path.join(scraperOutputDir, a)).mtime.getTime();
+          const sb = fs.statSync(path.join(scraperOutputDir, b)).mtime.getTime();
+          return sb - sa;
+        });
+        edaFile = path.join(scraperOutputDir, files[0]);
       }
-      // choose newest by mtime
-      files.sort((a, b) => {
-        const sa = fs.statSync(path.join(scraperOutputDir, a)).mtime.getTime();
-        const sb = fs.statSync(path.join(scraperOutputDir, b)).mtime.getTime();
-        return sb - sa;
-      });
-      edaFile = path.join(scraperOutputDir, files[0]);
     }
 
     const posts = [];
@@ -194,14 +260,32 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
             topLocations
           }
         ,
-          usedFile: path.basename(edaFile)
-        });
+            usedFile: path.basename(edaFile)
+          });
       })
       .on('error', (error) => {
         res.status(500).json({ error: error.message });
       });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// EDA generation status endpoint
+router.get('/eda-status/:userId', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const userId = req.params.userId;
+    const scraperOutputDir = path.join(__dirname, '..', '..', '..', 'scraper_output', userId);
+    const statusFile = path.join(scraperOutputDir, 'eda.status.json');
+    if (!fs.existsSync(scraperOutputDir) || !fs.existsSync(statusFile)) {
+      return res.status(404).json({ status: 'not-found' });
+    }
+    const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
