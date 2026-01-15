@@ -49,6 +49,8 @@ app.use('/api/geocode', geocodeRoutes);
 const consentRoutes = require('./routes/consent');
 app.use('/api/consent', consentRoutes);
 
+// EDA routes removed (feature reverted)
+
 // TODO: Add posts, dashboard, settings routes
 
 app.listen(PORT, () => {

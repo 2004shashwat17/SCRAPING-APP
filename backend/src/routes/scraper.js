@@ -41,11 +41,44 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
     
     const userId = req.params.userId;
     const scraperOutputDir = path.join(__dirname, '..', '..', '..', 'scraper_output', userId);
-    const edaFile = path.join(scraperOutputDir, `eda_${req.query.username || 'shaswat'}.csv`);
 
-    // Check if file exists
-    if (!fs.existsSync(edaFile)) {
-      return res.status(404).json({ error: 'EDA file not found for this user' });
+    if (!fs.existsSync(scraperOutputDir)) {
+      return res.status(404).json({ error: 'No scraper output found for this user' });
+    }
+
+    // Helper to normalize username (email -> name part, lowercase, alnum/underscore only)
+    const normalize = (s) => {
+      if (!s) return null;
+      let name = String(s).trim();
+      if (name.includes('@')) name = name.split('@')[0];
+      name = name.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      return name;
+    };
+
+    const requestedUsername = normalize(req.query.username);
+
+    // Prefer exact username match if provided
+    let edaFile = null;
+    if (requestedUsername) {
+      const candidate = path.join(scraperOutputDir, `eda_${requestedUsername}.csv`);
+      if (fs.existsSync(candidate)) {
+        edaFile = candidate;
+      }
+    }
+
+    // Fallback: pick the newest eda_*.csv in the user's directory
+    if (!edaFile) {
+      const files = fs.readdirSync(scraperOutputDir).filter(f => f.startsWith('eda_') && f.endsWith('.csv'));
+      if (files.length === 0) {
+        return res.status(404).json({ error: 'EDA file not found for this user' });
+      }
+      // choose newest by mtime
+      files.sort((a, b) => {
+        const sa = fs.statSync(path.join(scraperOutputDir, a)).mtime.getTime();
+        const sb = fs.statSync(path.join(scraperOutputDir, b)).mtime.getTime();
+        return sb - sa;
+      });
+      edaFile = path.join(scraperOutputDir, files[0]);
     }
 
     const posts = [];
@@ -160,6 +193,8 @@ router.get('/dashboard/stats/:userId', async (req, res) => {
           heatmap: {
             topLocations
           }
+        ,
+          usedFile: path.basename(edaFile)
         });
       })
       .on('error', (error) => {

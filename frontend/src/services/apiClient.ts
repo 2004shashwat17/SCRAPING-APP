@@ -169,6 +169,9 @@ class ApiClient {
     return this.request<User>('/api/auth/me');
   }
 
+  // List EDA CSV files for the authenticated user
+  // (removed) getEdaFiles: EDA listing removed
+
   async logout(): Promise<{ message: string }> {
     const result = await this.request<{ message: string }>('/api/auth/logout', { method: 'POST' });
     this.setToken(null);
@@ -179,6 +182,9 @@ class ApiClient {
   async getPosts(): Promise<any> {
     return this.request('/posts/');
   }
+
+  // Get summary stats for a specific EDA file
+  // (removed) getEdaFile: per-file EDA endpoint removed
 
   // Dashboard data endpoints
   async getDashboardStats(): Promise<DashboardStats> {

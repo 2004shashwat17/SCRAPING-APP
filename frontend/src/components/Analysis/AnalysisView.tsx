@@ -18,6 +18,7 @@ import {
   FormControl,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import {
   TrendingUp as TrendingUpIcon,
   ExpandMore as ExpandMoreIcon,
@@ -87,6 +88,7 @@ const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [edaData, setEdaData] = useState<any>(null);
+  const [edaStatus, setEdaStatus] = useState<'checking' | 'no-data' | 'done'>('checking');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userAvatar] = useState(localStorage.getItem('userAvatar') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4');
@@ -149,17 +151,21 @@ const Dashboard: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(null);
   };
+  
 
   // Function to load dashboard data
   const loadDashboardData = async () => {
     try {
+      setEdaStatus('checking');
       setLoading(true);
       setError(null);
       
       // Fetch EDA data if user is logged in
       if (user?.id) {
         try {
-          const data = await apiClient.getEdaDashboardStats(user.id, 'shaswat');
+          // Pass username hint if available; backend will auto-detect when absent
+          const usernameHint = user?.username || (user?.email && user.email.split('@')[0]);
+          const data = await apiClient.getEdaDashboardStats(user.id, usernameHint as string);
           // --- Robust EDA posts extraction for HeatmapMap ---
           // 1. Try data.posts (raw posts)
           // 2. Try data.heatmap.topLocations (aggregated)
@@ -175,6 +181,7 @@ const Dashboard: React.FC = () => {
           }
           // Always set posts array for HeatmapMap
           setEdaData({ ...data, posts });
+          setEdaStatus('done');
           
           // Set dashboard data from EDA
           setDashboardData({
@@ -183,8 +190,15 @@ const Dashboard: React.FC = () => {
             sentiment: '85%',
             activeHours: '6.2h',
           });
-        } catch (edaError) {
+        } catch (edaError: any) {
           console.error('EDA data fetch failed:', edaError);
+          // If backend said no file, explicitly mark no-data
+          const msg = edaError && edaError.message ? String(edaError.message) : String(edaError || '');
+          if (msg.toLowerCase().includes('eda file not found') || msg.includes('404')) {
+            setEdaStatus('no-data');
+          } else {
+            setEdaStatus('no-data');
+          }
           // Use mock data on error
           setDashboardData({
             totalPosts: 847,
@@ -194,13 +208,13 @@ const Dashboard: React.FC = () => {
           });
         }
       } else {
-        // Use mock data if no user
-        setDashboardData({
-          totalPosts: 847,
-          engagement: '2.4K',
-          sentiment: '85%',
-          activeHours: '6.2h',
-        });
+            // Use mock data if no user
+            setDashboardData({
+              totalPosts: 847,
+              engagement: '2.4K',
+              sentiment: '85%',
+              activeHours: '6.2h',
+            });
       }
     } catch (err) {
       console.log('Using mock data', err);
@@ -218,6 +232,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     loadDashboardData();
     const interval = setInterval(loadDashboardData, 30000);
+    // EDA file listing removed
     return () => clearInterval(interval);
   }, []);
 
@@ -287,6 +302,26 @@ const Dashboard: React.FC = () => {
             Here's what's happening with your child's online activity
           </Typography>
         </Box>
+        <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+          {edaStatus === 'checking' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <LinearProgress sx={{ width: 160, height: 8, borderRadius: 8 }} color="secondary" />
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Checking for analysis...</Typography>
+            </Box>
+          )}
+          {edaStatus === 'no-data' && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>No EDA data available</Typography>
+          )}
+          {edaStatus === 'done' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <LinearProgress variant="determinate" value={100} sx={{ width: 160, height: 8, borderRadius: 8, background: 'rgba(16, 185, 129, 0.12)' }} color="success" />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <CheckCircleIcon sx={{ color: 'success.main', fontSize: 18 }} />
+                <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 700 }}>Your analysis done</Typography>
+              </Box>
+            </Box>
+          )}
+        </Box>
       </Box>
 
       {/* Three Column Cards */}
@@ -354,7 +389,7 @@ const Dashboard: React.FC = () => {
                 Top engagers and their interaction levels
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flex: 1 }}>
-                {(edaData?.engagement?.topEngagers?.slice(0, 2) || [
+                {((edaData?.engagement?.topEngagers?.slice(0, 2)) || [
                   { name: 'Vibhor', count: 14 },
                   { name: 'Ravi Saxena', count: 11 },
                 ]).map((person: any, index: number) => (
@@ -375,6 +410,8 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </GlassCard>
         </Box>
+
+        {/* EDA file listing removed */}
 
         {/* Clusters Card - Small Preview (MOVED TO RIGHT) */}
         <Box
