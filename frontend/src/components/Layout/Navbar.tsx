@@ -5,7 +5,6 @@ import {
   IconButton,
   Typography,
   Box,
-  Badge,
   Avatar,
   Menu,
   MenuItem,
@@ -16,10 +15,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
   Menu as MenuIcon,
-  Notifications as NotificationsIcon,
   AccountCircle as AccountIcon,
   Logout as LogoutIcon,
-  Refresh as RefreshIcon,
+  
 } from '@mui/icons-material';
 
 interface NavbarProps {
@@ -31,7 +29,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const [notificationCount] = React.useState(3); // Mock notification count
+  // no notifications or refresh button in navbar
   const [userAvatar, setUserAvatar] = React.useState(localStorage.getItem('userAvatar') || '');
 
   // Listen for avatar changes
@@ -113,25 +111,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             sx={{ fontSize: '0.75rem' }}
           />
 
-          {/* Refresh Button */}
-          <IconButton
-            color="inherit"
-            aria-label="refresh data"
-            sx={{ color: theme.palette.text.secondary }}
-          >
-            <RefreshIcon />
-          </IconButton>
-
-          {/* Notifications */}
-          <IconButton
-            color="inherit"
-            aria-label="show notifications"
-            sx={{ color: theme.palette.text.secondary }}
-          >
-            <Badge badgeContent={notificationCount} color="error">
-              <NotificationsIcon />
-            </Badge>
-          </IconButton>
+          {/* (refresh & notifications removed) */}
 
           {/* Profile Menu */}
           <IconButton
@@ -154,10 +134,10 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
               {user?.username?.charAt(0).toUpperCase() || 'U'}
             </Avatar>
           </IconButton>
+
         </Box>
       </Toolbar>
 
-      {/* Profile Menu */}
       <Menu
         anchorEl={anchorEl}
         anchorOrigin={{
