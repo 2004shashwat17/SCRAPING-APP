@@ -42,9 +42,24 @@ router.post('/run', authenticateToken, async (req, res) => {
     const fs = require('fs');
     const path = require('path');
 
-    const { fbid, accessToken } = req.body || {};
+    const { fbid, accessToken: accessTokenFromBody } = req.body || {};
     if (!fbid || !/^[0-9]+$/.test(String(fbid))) return res.status(400).json({ error: 'fbid numeric required' });
-    if (!accessToken) return res.status(400).json({ error: 'accessToken required' });
+
+    // Prefer token from DB (saved during OAuth), fall back to provided token in body
+    let accessToken = accessTokenFromBody;
+    if (!accessToken) {
+      try {
+        const User = require('../models/User');
+        const user = await User.findById(req.userId).select('facebookAccessToken');
+        if (user && user.facebookAccessToken) {
+          accessToken = user.facebookAccessToken;
+        }
+      } catch (e) {
+        console.error('Failed to load user token from DB:', e);
+      }
+    }
+
+    if (!accessToken) return res.status(400).json({ error: 'accessToken required (provide in request or connect via OAuth)' });
 
     const userId = req.userId;
     const scraperOutputDir = path.join(__dirname, '..', '..', 'scraper_output', String(userId));
