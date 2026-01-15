@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const scraperService = require('../services/scraperService');
+const jwt = require('jsonwebtoken');
+const { spawn } = require('child_process');
 
 // Get scraping job status
 router.get('/status/:jobId', async (req, res) => {
@@ -19,6 +21,102 @@ router.get('/logs/:jobId', async (req, res) => {
     res.json({ logs });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Middleware to authenticate JWT token (same pattern as auth)
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'No token provided' });
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ message: 'Invalid token' });
+    req.userId = decoded.userId;
+    next();
+  });
+};
+
+// Start a scraper job (runs docker image and writes raw output to scraper_output/<userId>)
+router.post('/run', authenticateToken, async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+
+    const { fbid, accessToken } = req.body || {};
+    if (!fbid || !/^[0-9]+$/.test(String(fbid))) return res.status(400).json({ error: 'fbid numeric required' });
+    if (!accessToken) return res.status(400).json({ error: 'accessToken required' });
+
+    const userId = req.userId;
+    const scraperOutputDir = path.join(__dirname, '..', '..', 'scraper_output', String(userId));
+    fs.mkdirSync(scraperOutputDir, { recursive: true });
+
+    const jobId = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    const statusFile = path.join(scraperOutputDir, `scrape.${jobId}.status.json`);
+    const startedAt = new Date().toISOString();
+
+    const statusPayload = { jobId, status: 'processing', fbid: String(fbid), startedAt, logs: [] };
+    fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
+
+    // Build docker run command
+    const image = process.env.SCRAPER_IMAGE || 'shashwats500/facebook-scraper';
+    const mountHost = scraperOutputDir;
+    const mountContainer = '/app/output';
+
+    const dockerArgs = [
+      'run', '--rm',
+      '-e', `ACCESS_TOKEN=${accessToken}`,
+      '-e', `FBID=${fbid}`,
+      '-v', `${mountHost}:${mountContainer}`,
+      image
+    ];
+
+    const dockerCmd = process.env.DOCKER_CMD || 'docker';
+    const child = spawn(dockerCmd, dockerArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    child.stdout.on('data', (d) => {
+      try {
+        const s = d.toString();
+        statusPayload.logs.push({ t: new Date().toISOString(), out: s });
+        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
+      } catch (e) { console.error(e); }
+    });
+    child.stderr.on('data', (d) => {
+      try {
+        const s = d.toString();
+        statusPayload.logs.push({ t: new Date().toISOString(), err: s });
+        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
+      } catch (e) { console.error(e); }
+    });
+
+    child.on('close', (code) => {
+      try {
+        statusPayload.finishedAt = new Date().toISOString();
+        statusPayload.exitCode = code;
+        statusPayload.status = code === 0 ? 'done' : 'failed';
+        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
+      } catch (e) { console.error(e); }
+    });
+
+    return res.status(202).json({ jobId, statusUrl: `/api/scraper/job/${userId}/${jobId}` });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// Get job status for a user's job
+router.get('/job/:userId/:jobId', authenticateToken, async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { userId, jobId } = req.params;
+    // ensure requester can only read their own jobs
+    if (req.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
+    const statusFile = path.join(__dirname, '..', '..', 'scraper_output', String(userId), `scrape.${jobId}.status.json`);
+    if (!fs.existsSync(statusFile)) return res.status(404).json({ error: 'Job not found' });
+    const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 
