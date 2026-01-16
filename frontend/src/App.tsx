@@ -18,6 +18,9 @@ import AnalysisView from './components/Analysis/AnalysisView';
 import ProfileView from './components/Profile/ProfileView';
 import Sidebar from './components/Layout/Sidebar';
 import Navbar from './components/Layout/Navbar';
+import StatisticsPage from './pages/StatisticsPage';
+import EngagementPage from './pages/EngagementPage';
+import ClustersPage from './pages/ClustersPage';
 
 // OAuth Callback Handler Component
 const OAuthCallbackHandler: React.FC = () => {
@@ -169,6 +172,9 @@ const AuthenticatedApp: React.FC = () => {
               <Route path="/social-accounts" element={<SocialAccountsOAuthView />} />
               <Route path="/social-accounts-oauth" element={<SocialAccountsOAuthView />} />
               <Route path="/analysis" element={<AnalysisView />} />
+              <Route path="/statistics" element={<StatisticsPage />} />
+              <Route path="/engagement" element={<EngagementPage />} />
+              <Route path="/clusters" element={<ClustersPage />} />
               <Route path="/collection" element={<DataCollectionStatus />} />
               <Route path="/settings" element={<SettingsView />} />
               <Route path="/profile" element={<ProfileView />} />

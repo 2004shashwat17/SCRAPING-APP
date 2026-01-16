@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -12,32 +12,38 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   IconButton,
   Select,
   MenuItem,
   FormControl,
+  Button,
 } from '@mui/material';
+import WordCloud from 'react-wordcloud';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import {
-  TrendingUp as TrendingUpIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import HeatmapMap from './HeatmapMap';
+import { useNavigate } from 'react-router-dom';
+import { ALL_CLUSTERS } from '../../data/clusters';
 import apiClient from '../../services/apiClient';
 import { useAuth } from '../../contexts/AuthContext';
 
-const activityClusters = [
-  { name: 'Terrorism & International ➤', numPosts: 11, topPost: 'On the roads after a while' },
-  { name: 'Threats & Controversies ➤', numPosts: 8, topPost: 'Breaking news today' },
-  { name: 'Mountain Adventure ➤', numPosts: 10, topPost: 'Cheers to some new adventures' },
-  { name: 'Social Media & Networking ➤', numPosts: 7, topPost: 'Completed 5 Years With Facebook' },
-];
+
+// Small set of clusters shown in the Activity Clusters card (top 4) with sample stats
+const activityClusters = ALL_CLUSTERS.slice(0, 4).map((name, idx) => ({
+  name: `${name} ➤`,
+  numPosts: [11, 8, 10, 7][idx] ?? 6,
+  topPost: 'Top post preview',
+}));
 
 const redFlags = ['Late night posts', 'Alcohol mentions'];
 
-const locationPoints = [
+const _locationPoints = [
   { lat: 28.6139, lng: 77.2090, intensity: 0.9 },
   { lat: 28.6169, lng: 77.2120, intensity: 0.8 },
   { lat: 28.6109, lng: 77.2060, intensity: 0.7 },
@@ -49,7 +55,8 @@ const locationPoints = [
 ];
 
 // Function to get color based on post count density
-const getLocationColor = (count: number, maxCount: number): string => {
+// (kept for future use; underscore-prefix to avoid unused-var warning)
+const _getLocationColor = (count: number, maxCount: number): string => {
   const intensity = count / maxCount;
   if (intensity >= 0.7) return '#ff0000'; // Dense - Dark Red
   if (intensity >= 0.4) return '#ff6600'; // Medium - Orange  
@@ -94,7 +101,45 @@ const Dashboard: React.FC = () => {
   const [userAvatar] = useState(localStorage.getItem('userAvatar') || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4');
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<string | null>(null);
+  const [clusterCloudOpen, setClusterCloudOpen] = useState(false);
+  // (cloud words come from ALL_CLUSTERS below)
+  // Cloud should show all clusters from ALL_CLUSTERS; values fallback to sample counts
+  const PALETTE = ['#ef476f', '#ff9f1c', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#ff6b6b', '#4cc9f0'];
+
+  // Assign deterministic size classes so some words render Large / Medium / Small
+  const sizePattern: ('large' | 'medium' | 'small')[] = ['large', 'medium', 'small', 'medium', 'small', 'small', 'medium'];
+  const classToValue = { large: 40, medium: 16, small: 7 };
+  const cloudWordsAll = ALL_CLUSTERS.map((name, idx) => {
+    const match = activityClusters.find(ac => ac.name.replace(/\s+►|➤/g, '').toLowerCase() === name.toLowerCase());
+    const cls = sizePattern[idx % sizePattern.length];
+    const value = match ? Math.max(match.numPosts, classToValue[cls]) : classToValue[cls];
+    return { text: name, value, color: PALETTE[idx % PALETTE.length] };
+  });
+  const [selectedClusterInDialog, setSelectedClusterInDialog] = useState<string | null>(null);
+
+  const slugify = useCallback((s: string) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, ''), []);
+
+// small helper for deterministic color selection fallback
+const hashCode = (s: string) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i) | 0;
+  return h;
+};
+
+  // When dialog opens and a cluster is selected, scroll it into view
+  useEffect(() => {
+    if (openDialog === 'clusters' && selectedClusterInDialog) {
+      const id = `cluster-${slugify(selectedClusterInDialog)}`;
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Clear highlight after a short delay
+      const t = setTimeout(() => setSelectedClusterInDialog(null), 3000);
+      return () => clearTimeout(t);
+    }
+    return;
+  }, [openDialog, selectedClusterInDialog, slugify]);
   const [selectedYear, setSelectedYear] = useState<number>(2025);
+  const navigate = useNavigate();
 
   // Generate years from 2000 to 3000
   const years = Array.from({ length: 1001 }, (_, i) => 2000 + i);
@@ -144,9 +189,7 @@ const Dashboard: React.FC = () => {
     setSelectedYear(event.target.value);
   };
 
-  const handleOpenDialog = (dialogType: string) => {
-    setOpenDialog(dialogType);
-  };
+  // handleOpenDialog removed (navigates to pages now)
 
   const handleCloseDialog = () => {
     setOpenDialog(null);
@@ -154,7 +197,7 @@ const Dashboard: React.FC = () => {
   
 
   // Function to load dashboard data
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       setEdaStatus('checking');
       setLoading(true);
@@ -227,14 +270,34 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id, user?.email, user?.username]);
 
   useEffect(() => {
     loadDashboardData();
     const interval = setInterval(loadDashboardData, 30000);
     // EDA file listing removed
     return () => clearInterval(interval);
-  }, []);
+  }, [loadDashboardData]);
+
+  // Prepare chart data: use real monthly data when available, otherwise fallback to static sample values
+  const monthlyRaw = getMonthlyData(selectedYear);
+  const _hasMonthlyData = Array.isArray(monthlyRaw) && monthlyRaw.some(m => (m.posts || 0) > 0);
+  const sampleMonthly = [
+    { month: 'Jan', posts: 8 },
+    { month: 'Feb', posts: 12 },
+    { month: 'Mar', posts: 10 },
+    { month: 'Apr', posts: 18 },
+    { month: 'May', posts: 22 },
+    { month: 'Jun', posts: 16 },
+    { month: 'Jul', posts: 12 },
+    { month: 'Aug', posts: 14 },
+    { month: 'Sep', posts: 9 },
+    { month: 'Oct', posts: 6 },
+    { month: 'Nov', posts: 10 },
+    { month: 'Dec', posts: 13 },
+  ];
+  const chartData = _hasMonthlyData ? monthlyRaw.map(d => ({ name: d.month, posts: d.posts })) : sampleMonthly.map(d => ({ name: d.month, posts: d.posts }));
+  const usingSample = !_hasMonthlyData;
 
   if (loading && !dashboardData) {
     return (
@@ -328,7 +391,7 @@ const Dashboard: React.FC = () => {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 3, mb: 4, alignItems: 'stretch' }}>
         {/* Statistics Card - Small Preview */}
         <Box
-          onClick={() => handleOpenDialog('statistics')}
+          onClick={() => setOpenDialog('statistics')}
           sx={{
             cursor: 'pointer',
             transition: 'all 0.3s ease',
@@ -369,7 +432,7 @@ const Dashboard: React.FC = () => {
 
         {/* Engagement Card - Small Preview (MOVED TO MIDDLE) */}
         <Box
-          onClick={() => handleOpenDialog('engagement')}
+          onClick={() => setOpenDialog('engagement')}
           sx={{
             cursor: 'pointer',
             transition: 'all 0.3s ease',
@@ -415,7 +478,7 @@ const Dashboard: React.FC = () => {
 
         {/* Clusters Card - Small Preview (MOVED TO RIGHT) */}
         <Box
-          onClick={() => handleOpenDialog('clusters')}
+          onClick={() => setOpenDialog('clusters')}
           sx={{
             cursor: 'pointer',
             transition: 'all 0.3s ease',
@@ -692,6 +755,21 @@ const Dashboard: React.FC = () => {
             </Box>
           </Box>
         </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleCloseDialog} sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              navigate('/statistics');
+              handleCloseDialog();
+            }}
+            sx={{ ml: 1, textTransform: 'none' }}
+          >
+            Details
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Clusters Dialog */}
@@ -722,48 +800,73 @@ const Dashboard: React.FC = () => {
             These are the main topics and themes your child posts about on social media. Understanding their interests helps you stay connected with what matters to them and identify any concerning patterns in their content.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            {[
-              'Humor & Entertainment',
-              'Travel & Destinations',
-              'Mountain Adventures',
-              'SEO & Professional Events',
-              'Social Media & Networking',
-              'Nostalgia & Memories',
-              'Education & Milestones',
-              'Meetups & Networking Events',
-              'Industry Experts & Mentors',
-              'Life Philosophy & Wisdom',
-              'Emotional & Social Causes',
-              'Miscellaneous',
-            ].map((cluster, index) => (
-              <Box
-                key={index}
-                sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 2,
-                }}
-              >
+            {ALL_CLUSTERS.map((cluster, index) => {
+              const id = `cluster-${slugify(cluster)}`;
+              const isHighlighted = selectedClusterInDialog === cluster;
+              const color = PALETTE[index % PALETTE.length];
+              return (
                 <Box
-                  sx={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    boxShadow: '0 0 10px rgba(255, 255, 255, 0.8)',
+                  id={id}
+                  key={index}
+                  onClick={() => {
+                    // If clicked, open/expand in main list if present
+                    const match = activityClusters.find(ac => ac.name.replace(/\s+►|➤/g, '').toLowerCase() === cluster.toLowerCase());
+                    if (match) {
+                      setOpenDialog(null);
+                      setExpandedCluster(match.name);
+                    } else {
+                      // keep the dialog open but briefly highlight
+                      setSelectedClusterInDialog(cluster);
+                    }
                   }}
-                />
-                <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
-                  {cluster}
-                </Typography>
-              </Box>
-            ))}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    background: isHighlighted ? `${color}22` : 'rgba(255, 255, 255, 0.08)',
+                    border: isHighlighted ? `1px solid ${color}55` : '1px solid rgba(255, 255, 255, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    cursor: 'pointer',
+                    transition: 'all 200ms ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                    },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: color,
+                      boxShadow: `0 4px 14px ${color}55`,
+                      border: '2px solid rgba(255,255,255,0.18)'
+                    }}
+                  />
+                  <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600 }}>
+                    {cluster}
+                  </Typography>
+                </Box>
+              );
+            })}
           </Box>
         </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleCloseDialog} sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              navigate('/clusters', { state: { highlight: selectedClusterInDialog || undefined } });
+              handleCloseDialog();
+            }}
+            sx={{ ml: 1, textTransform: 'none' }}
+          >
+            Details
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Engagement Dialog */}
@@ -838,15 +941,44 @@ const Dashboard: React.FC = () => {
             ))}
           </Box>
         </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleCloseDialog} sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              navigate('/engagement');
+              handleCloseDialog();
+            }}
+            sx={{ ml: 1, textTransform: 'none' }}
+          >
+            Details
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Activity Clusters */}
       <Box sx={{ mb: 4 }}>
         <GlassCard gradient="linear-gradient(135deg, rgba(139, 92, 246, 0.6) 0%, rgba(236, 72, 153, 0.5) 100%)">
           <CardContent>
-            <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 3 }}>
-              📊 Activity Clusters
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA' }}>
+                📊 Activity Clusters
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => setClusterCloudOpen(true)}
+                sx={{
+                  background: 'linear-gradient(135deg, rgba(139,92,246,0.9), rgba(236,72,153,0.9))',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+                }}
+              >
+                ClusterCloud
+              </Button>
+            </Box>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
               {activityClusters.map((cluster, index) => {
                 const gradients = [
@@ -924,96 +1056,69 @@ const Dashboard: React.FC = () => {
         </GlassCard>
       </Box>
 
-      {/* Close Friends & Red Flags */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 4 }}>
+      {/* Moods (stacked above Red Flags, full-width like Activity Clusters) */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr' }, gap: 3, mb: 4, alignItems: 'stretch' }}>
         {/* Moods */}
-        <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.55) 0%, rgba(6, 182, 212, 0.5) 100%)">
-          <CardContent>
+        <Box>
+          <GlassCard gradient="linear-gradient(135deg, rgba(16, 185, 129, 0.55) 0%, rgba(6, 182, 212, 0.5) 100%)">
+          <CardContent sx={{ minHeight: '280px' }}>
             <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA', mb: 3 }}>
-              😊 Moods
+              📈 Monthly Activity Trend
             </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {[
-                { 
-                  label: 'Happy', 
-                  value: 65, 
-                  color: '#10b981', 
-                  icon: '😊',
-                  keywords: ['celebration', 'friends', 'adventure', 'success', 'love', 'fun']
-                },
-                { 
-                  label: 'Sad', 
-                  value: 15, 
-                  color: '#3b82f6', 
-                  icon: '😢',
-                  keywords: ['miss', 'alone', 'disappointed', 'upset', 'cry']
-                },
-                { 
-                  label: 'Angry', 
-                  value: 10, 
-                  color: '#ef4444', 
-                  icon: '😠',
-                  keywords: ['unfair', 'frustrated', 'annoyed', 'mad', 'hate']
-                },
-                { 
-                  label: 'Neutral', 
-                  value: 10, 
-                  color: '#f59e0b', 
-                  icon: '😐',
-                  keywords: ['normal', 'routine', 'update', 'daily', 'work']
-                },
-              ].map((mood, index) => (
-                <Box key={index}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Typography sx={{ fontSize: '1.5rem' }}>{mood.icon}</Typography>
-                      <Typography variant="body1" sx={{ color: '#F5F7FA', fontWeight: 700 }}>
-                        {mood.label}
-                      </Typography>
-                    </Box>
-                    <Typography variant="h6" sx={{ color: mood.color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {mood.value}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={mood.value}
+            {/* Monthly posts / engagement chart (replaces the moods list) */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ color: '#C9CED6' }}>Monthly posts — {selectedYear}</Typography>
+                <FormControl size="small">
+                  <Select
+                    value={selectedYear}
+                    onChange={handleYearChange}
                     sx={{
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      mb: 1,
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: mood.color,
-                        borderRadius: 4,
-                      },
+                      color: '#fff',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      borderRadius: 1,
+                      minWidth: 100,
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.08)' },
                     }}
-                  />
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {mood.keywords.map((keyword, kidx) => (
-                      <Chip
-                        key={kidx}
-                        label={keyword}
-                        size="small"
-                        sx={{
-                          background: `${mood.color}22`,
-                          color: mood.color,
-                          fontWeight: 500,
-                          fontSize: '0.7rem',
-                          border: `1px solid ${mood.color}44`,
-                        }}
-                      />
+                  >
+                    {years.map((year) => (
+                      <MenuItem key={year} value={year}>{year}</MenuItem>
                     ))}
-                  </Box>
-                </Box>
-              ))}
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <Box sx={{ height: { xs: 140, md: 180 }, borderRadius: 2, p: 1, background: 'linear-gradient(135deg, #041224 0%, #08315a 40%, #0b2840 100%)', boxShadow: 'inset 0 4px 30px rgba(0,0,0,0.35)', backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.01) 0 2px, transparent 2px 6px)' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorPosts" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#34d399" stopOpacity={0.6} />
+                        <stop offset="100%" stopColor="#34d399" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: '#C9CED6', fontSize: 12 }} axisLine={false} />
+                    <YAxis tick={{ fill: '#C9CED6', fontSize: 12 }} axisLine={false} />
+                    <Tooltip contentStyle={{ background: 'rgba(8,16,30,0.95)', borderRadius: 8, border: 'none' }} labelStyle={{ color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(value: any) => [value, 'Posts']} />
+                    <Area type="monotone" dataKey="posts" stroke="#34d399" fill="url(#colorPosts)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+              {usingSample && (
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Showing sample data for preview</Typography>
+              )}
+
+              <Typography variant="caption" sx={{ color: '#C9CED6' }}>Shows monthly posting activity (use the year selector to change the view).</Typography>
             </Box>
           </CardContent>
-        </GlassCard>
+          </GlassCard>
+        </Box>
 
-        {/* Red Flags */}
-        <GlassCard gradient="linear-gradient(135deg, rgba(239, 68, 68, 0.65) 0%, rgba(251, 146, 60, 0.55) 100%)" priority={true}>
-          <CardContent>
+        {/* Red Flags (full-width, red background like original) */}
+        <Box>
+          <GlassCard gradient="linear-gradient(135deg, rgba(239, 68, 68, 0.8) 0%, rgba(245, 101, 101, 0.7) 60%, rgba(251,146,60,0.55) 100%)" priority={true}>
+          <CardContent sx={{ minHeight: '280px' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
               <Typography sx={{ fontSize: '1.8rem' }}>⚠️</Typography>
               <Typography variant="h5" sx={{ fontWeight: 800, color: '#F5F7FA' }}>
@@ -1026,28 +1131,29 @@ const Dashboard: React.FC = () => {
                   key={index}
                   sx={{
                     p: 2.5,
-                    borderRadius: 2,
-                    background: 'rgba(239, 68, 68, 0.3)',
-                    border: '1px solid rgba(239, 68, 68, 0.6)',
+                    borderRadius: 3,
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
+                    border: '1px solid rgba(255,255,255,0.06)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 2,
                     transition: 'all 0.3s ease',
                     '&:hover': {
-                      background: 'rgba(239, 68, 68, 0.35)',
                       transform: 'translateY(-2px)',
+                      boxShadow: '0 12px 30px rgba(0,0,0,0.12)'
                     },
                   }}
                 >
-                  <Typography sx={{ fontSize: '1.5rem' }}>
-                    {flag.toLowerCase().includes('alcohol') ? '🍺' : '🚨'}
-                  </Typography>
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(139,92,246,0.12)' }}>
+                    <Typography sx={{ fontSize: '1.2rem' }}>{flag.toLowerCase().includes('alcohol') ? '🍺' : '🚨'}</Typography>
+                  </Box>
                   <Typography sx={{ color: '#F5F7FA', fontWeight: 700 }}>{flag}</Typography>
                 </Box>
               ))}
             </Box>
           </CardContent>
-        </GlassCard>
+          </GlassCard>
+        </Box>
       </Box>
 
       {/* Location Heatmap (deck.gl) */}
@@ -1068,6 +1174,85 @@ const Dashboard: React.FC = () => {
           </Box>
         </CardContent>
       </GlassCard>
+      {/* Cluster Cloud Dialog */}
+      <Dialog
+        open={clusterCloudOpen}
+        onClose={() => setClusterCloudOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(180deg, rgba(18,18,20,0.95), rgba(30,30,45,0.9))',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(139,92,246,0.2)',
+            borderRadius: 2,
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            ☁️ ClusterCloud
+          </Typography>
+          <IconButton onClick={() => setClusterCloudOpen(false)} sx={{ color: '#fff' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 2 }}>
+            A quick visual view of all clusters. Click any cluster to open its details in the list.
+          </Typography>
+          <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', py: 2 }}>
+            <Box
+              sx={{
+                width: { xs: '100%', md: '70%' },
+                maxWidth: 980,
+                background: 'linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)',
+                borderRadius: 4,
+                p: { xs: 2, md: 3 },
+                boxShadow: '0 20px 40px rgba(3, 10, 18, 0.45)',
+                border: '1px solid rgba(0,0,0,0.06)',
+                mx: 'auto',
+              }}
+            >
+              <div style={{ width: '100%', height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <WordCloud
+                  words={cloudWordsAll}
+                  options={{
+                    rotations: 1,
+                    rotationAngles: [0, 0],
+                    fontSizes: [14, 140],
+                    fontFamily: 'Poppins, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+                    enableTooltip: true,
+                    deterministic: true,
+                    scale: 'sqrt',
+                    padding: 0,
+                    spiral: 'archimedean',
+                    // use palette so words are colored vibrantly
+                    colors: PALETTE,
+                  }}
+                  callbacks={{
+                    onWordClick: (word: any) => {
+                      const text: string = (word as any).text;
+                      const match = activityClusters.find(ac => ac.name.replace(/\s+►|➤/g, '').toLowerCase() === text.toLowerCase());
+                      if (match) {
+                        setExpandedCluster(match.name);
+                        setClusterCloudOpen(false);
+                        return;
+                      }
+                      setClusterCloudOpen(false);
+                      navigate('/clusters', { state: { highlight: text } });
+                      setSelectedClusterInDialog(text);
+                    },
+                    // color words by matching 'color' property if present
+                    getWordColor: (word: any) => (word.color ? word.color : PALETTE[Math.abs(hashCode(word.text)) % PALETTE.length]),
+                  }}
+                />
+              </div>
+            </Box>
+          </Box>
+          {/* removed tip line per design request */}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

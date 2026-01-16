@@ -16,6 +16,9 @@ import {
   Security as ThreatIcon,
   AccountCircle as SocialIcon,
   Analytics as AnalyticsIcon,
+  BarChart as StatsIcon,
+  People as PeopleIcon,
+  Category as ClustersIcon,
   // Dashboard icon removed (unused) to fix eslint warning
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -30,6 +33,9 @@ const DRAWER_WIDTH = 240;
 const menuItems = [
   { text: 'Social Accounts', icon: <SocialIcon />, path: '/social-accounts' },
   { text: 'Analysis', icon: <AnalyticsIcon />, path: '/analysis' },
+  { text: 'Statistics', icon: <StatsIcon />, path: '/statistics' },
+  { text: 'Overall Engagement', icon: <PeopleIcon />, path: '/engagement' },
+  { text: 'Clusters', icon: <ClustersIcon />, path: '/clusters' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ open }) => {
