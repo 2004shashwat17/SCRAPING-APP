@@ -11,6 +11,9 @@ const UserSchema = new mongoose.Schema({
   facebookEmail: { type: String }, // Facebook email
   facebookConnected: { type: Boolean, default: false },
   facebookConnectedAt: { type: Date },
+  // Encrypted cookies blob and optional saved cookie file path
+  facebookCookiesEncrypted: { type: Object, default: null },
+  facebookCookiesPath: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
   // Embedded consents (moved from separate Consent model)
   consents: [new mongoose.Schema({

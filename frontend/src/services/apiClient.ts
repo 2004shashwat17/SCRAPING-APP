@@ -2,17 +2,37 @@
  * API client configuration and utilities for communicating with the FastAPI backend
  */
 
-// Always use REACT_APP_BACKEND_URL if set, otherwise throw error
+// Determine API base URL with sensible defaults for development.
+// Behavior:
+// - In development, prefer a localhost backend (`http://localhost:5001`).
+//   If `API_BASE_URL` is set in localStorage and points to localhost/127.0.0.1, use that instead.
+// - In production, allow an explicit localStorage override or the `REACT_APP_BACKEND_URL` env var.
 const getApiBaseUrl = () => {
-  // Check for override in localStorage (for development)
-  const overrideUrl = localStorage.getItem('API_BASE_URL');
-  if (overrideUrl) {
-    return overrideUrl;
+  // Development: prefer local backend to avoid accidentally calling deployed hosts
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      const overrideUrl = localStorage.getItem('API_BASE_URL');
+      if (overrideUrl && (overrideUrl.includes('localhost') || overrideUrl.includes('127.0.0.1'))) {
+        return overrideUrl;
+      }
+    } catch (e) {
+      // ignore any localStorage access errors
+    }
+    return 'http://localhost:5001';
   }
-  // 2. Use environment variable (frontend .env)
+
+  // Non-development (production/staging): allow override via localStorage first
+  try {
+    const overrideUrl = localStorage.getItem('API_BASE_URL');
+    if (overrideUrl) return overrideUrl;
+  } catch (e) {
+    // ignore
+  }
+
   if (process.env.REACT_APP_BACKEND_URL) {
     return process.env.REACT_APP_BACKEND_URL;
   }
+
   throw new Error('REACT_APP_BACKEND_URL is not set in the environment variables.');
 };
 
@@ -110,7 +130,7 @@ class ApiClient {
     return headers;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
     // Normalize URL to avoid duplicate '/api' when baseURL already contains it
     let ep = endpoint;
     try {
@@ -131,7 +151,12 @@ class ApiClient {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        const err: any = new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        err.status = response.status;
+        err.data = errorData;
+        err.url = url;
+        err.statusText = response.statusText;
+        throw err;
       }
 
       const data = await response.json();
@@ -258,12 +283,12 @@ class ApiClient {
   }
 
   // Convenience methods for HTTP verbs
-  async get<T>(endpoint: string): Promise<{ data: T }> {
+  async get<T = any>(endpoint: string): Promise<{ data: T }> {
     const data = await this.request<T>(endpoint);
     return { data };
   }
 
-  async post<T>(endpoint: string, body?: any): Promise<{ data: T }> {
+  async post<T = any>(endpoint: string, body?: any): Promise<{ data: T }> {
     const data = await this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
@@ -271,7 +296,7 @@ class ApiClient {
     return { data };
   }
 
-  async put<T>(endpoint: string, body?: any): Promise<{ data: T }> {
+  async put<T = any>(endpoint: string, body?: any): Promise<{ data: T }> {
     const data = await this.request<T>(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
@@ -279,7 +304,7 @@ class ApiClient {
     return { data };
   }
 
-  async delete<T>(endpoint: string): Promise<{ data: T }> {
+  async delete<T = any>(endpoint: string): Promise<{ data: T }> {
     const data = await this.request<T>(endpoint, {
       method: 'DELETE',
     });

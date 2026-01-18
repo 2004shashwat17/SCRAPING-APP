@@ -179,6 +179,7 @@ const AuthenticatedApp: React.FC = () => {
               <Route path="/settings" element={<SettingsView />} />
               <Route path="/profile" element={<ProfileView />} />
               <Route path="/api/v1/oauth/twitter/callback" element={<OAuthCallbackHandler />} />
+              {/* Dev-only capture page removed; use production flow in Social Accounts */}
             </Routes>
           </Box>
         </Box>

@@ -52,3 +52,19 @@ curl -X POST http://ml-service:5000/predict \
 The ML service should return a JSON result which the backend can save in the database and mark the analysis status = DONE.
 
 Security: require a shared token via `X-ML-TOKEN` header (or use mTLS / internal networking) so only authorized callers can request predictions.
+
+## Facebook cookie capture (Puppeteer)
+
+- New endpoints:
+   - `POST /api/facebook/start` — start a Puppeteer session and attempt login with `{ userId, fbEmail, fbPassword }`. If 2FA is required, responds with `{ status: '2fa_required', sessionId }`.
+   - `POST /api/facebook/submit-2fa` — submit `{ sessionId, code, userId }` to complete login and save cookies.
+
+- **Authentication:** Both endpoints now require a valid **Bearer JWT** (set via `Authorization: Bearer <token>`). The server uses the token to identify the user—do not pass `userId` in the request body.
+
+- Environment variables:
+   - `COOKIE_ENCRYPTION_KEY` — base64 32-byte key used to encrypt cookie JSON before storing in MongoDB.
+   - `COOKIE_CAPTURE_TIMEOUT_MS` — timeout for Puppeteer waiting (default 45000 ms).
+
+- Saved cookies are written to `backend/cookies/<userId>_<timestamp>.json` and an encrypted blob is stored in the user document.
+
+**Security note:** Do not store user passwords long-term. Use HTTPS and explicit consent when capturing cookies.

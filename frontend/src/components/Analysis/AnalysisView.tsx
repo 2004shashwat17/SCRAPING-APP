@@ -4,7 +4,7 @@ import {
   CardContent,
   Typography,
   Box,
-  Chip,
+  // Chip, (unused)
   CircularProgress,
   Alert,
   Avatar,
@@ -43,6 +43,7 @@ const activityClusters = ALL_CLUSTERS.slice(0, 4).map((name, idx) => ({
 
 const redFlags = ['Late night posts', 'Alcohol mentions'];
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _locationPoints = [
   { lat: 28.6139, lng: 77.2090, intensity: 0.9 },
   { lat: 28.6169, lng: 77.2120, intensity: 0.8 },
@@ -56,6 +57,7 @@ const _locationPoints = [
 
 // Function to get color based on post count density
 // (kept for future use; underscore-prefix to avoid unused-var warning)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _getLocationColor = (count: number, maxCount: number): string => {
   const intensity = count / maxCount;
   if (intensity >= 0.7) return '#ff0000'; // Dense - Dark Red

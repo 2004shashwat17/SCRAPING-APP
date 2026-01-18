@@ -1,4 +1,15 @@
-# Environment variables
+node_modules/
+/.pnp
+.pnp.js
+dist/
+build/
+coverage/
+/.cache
+# Local env files
+/backend/.env
+
+# OS files
+.DS_Store# Environment variables
 .env
 .env.local
 .env.development.local

@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
 import Avatar from '@mui/material/Avatar';
 import { apiClient, getApiBaseUrl } from '../../services/apiClient';
+import FacebookCaptureModal from './FacebookCaptureModal';
 import type { SocialAccount, OAuthAccountsResponse } from '../../types/api';
 
 const SocialAccountsOAuthView: React.FC = () => {
@@ -24,6 +25,8 @@ const SocialAccountsOAuthView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showCaptureModal, setShowCaptureModal] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState<'idle'|'pending'|'success'|'error'>('idle');
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -287,6 +290,7 @@ const SocialAccountsOAuthView: React.FC = () => {
                         >
                           Refresh
                         </Button>
+                        {/* Analysis button removed from inline actions to render as a separate card below */}
                         <Button
                           variant="outlined"
                           color="error"
@@ -318,9 +322,42 @@ const SocialAccountsOAuthView: React.FC = () => {
             </Card>
           );
         })}
+
+        {/* Facebook Analysis card - shown below the Facebook auth card */}
+        {currentUser && (
+          <Card variant="outlined" sx={{ mt: 0 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="h6">Facebook Analysis</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {currentUser.facebookConnected
+                      ? 'Connected — cookies saved in MongoDB'
+                      : 'Not enabled. Use the button to save cookies for analysis.'}
+                  </Typography>
+                  {currentUser.facebookConnected && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Saved: {currentUser.facebookConnectedAt ? new Date(currentUser.facebookConnectedAt).toLocaleString() : 'Recently'}
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box>
+                  <Button variant="contained" onClick={() => setShowCaptureModal(true)} disabled={captureStatus === 'pending'}>
+                    {captureStatus === 'pending' ? <CircularProgress size={18} /> : 'Enable Facebook Analysis'}
+                  </Button>
+                  {/* Dev test removed in favor of production flow */}
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
       </Box>
 
       {/* Note removed as requested */}
+      {currentUser && (
+        <FacebookCaptureModal open={showCaptureModal} onClose={() => setShowCaptureModal(false)} onStatusChange={setCaptureStatus} />
+      )}
     </Box>
   );
 };

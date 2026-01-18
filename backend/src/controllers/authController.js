@@ -13,6 +13,7 @@ exports.register = async (req, res) => {
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
     res.status(201).json({ access_token: token, token_type: 'Bearer', user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar } });
   } catch (err) {
+    console.error('auth.register error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 };

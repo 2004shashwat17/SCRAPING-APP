@@ -63,6 +63,14 @@ try {
   console.error('Failed to mount cookie routes:', e && e.message);
 }
 
+// Facebook cookie capture (Puppeteer)
+try {
+  const fbCapture = require('./routes/facebookCapture');
+  app.use('/api/facebook', fbCapture);
+} catch (e) {
+  console.error('Failed to mount facebook capture routes:', e && e.message);
+}
+
 // Note: job worker will be started after successful MongoDB connection above.
 
 // Geocode routes (server-side geocoding and caching)
