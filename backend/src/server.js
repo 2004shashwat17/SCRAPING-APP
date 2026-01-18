@@ -20,9 +20,23 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+if (!MONGODB_URI) {
+  console.error('ERROR: MONGODB_URI is not set. The server will start but DB-backed features (jobs, cookies) will be disabled until you set MONGODB_URI.');
+} else {
+  mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => {
+      console.log('MongoDB connected');
+
+      // Start job worker to process queued jobs
+      try {
+        const jobWorker = require('./workers/jobWorker');
+        jobWorker.start();
+      } catch (e) {
+        console.error('Failed to start job worker:', e.message || e);
+      }
+    })
+    .catch((err) => console.error('MongoDB connection error:', err));
+}
 
 // Routes
 app.get('/', (req, res) => {
@@ -40,6 +54,16 @@ app.use('/api/oauth', oauthRoutes);
 // Scraper routes
 const scraperRoutes = require('./routes/scraper');
 app.use('/api/scraper', scraperRoutes);
+
+// Cookie admin routes
+try {
+  const cookieRoutes = require('./routes/cookies');
+  app.use('/api/cookies', cookieRoutes);
+} catch (e) {
+  console.error('Failed to mount cookie routes:', e && e.message);
+}
+
+// Note: job worker will be started after successful MongoDB connection above.
 
 // Geocode routes (server-side geocoding and caching)
 const geocodeRoutes = require('./routes/geocode');

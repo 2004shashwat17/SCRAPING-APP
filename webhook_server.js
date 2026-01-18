@@ -13,8 +13,19 @@ const axios = require('axios');
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || null;
 const ML_TOKEN = process.env.ML_TOKEN || null;
 
+const mongoose = require('mongoose');
+require('dotenv').config();
+
 const app = express();
 app.use(express.json());
+
+// Connect to MongoDB so webhook can create job records
+const MONGODB_URI = process.env.MONGODB_URI;
+if (MONGODB_URI) {
+  mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Webhook: MongoDB connected'))
+    .catch((err) => console.error('Webhook: MongoDB connection error:', err));
+}
 
 const PORT = 3001;
 const OUTPUT_BASE_DIR = path.join(__dirname, 'scraper_output');
@@ -52,54 +63,43 @@ app.post('/webhook/start-scraping', async (req, res) => {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  console.log(`\n🚀 Starting Docker container: ${containerName}`);
-  console.log(`📁 Output directory: ${outputDir}`);
+  console.log(`\n📁 Output directory: ${outputDir}`);
 
-  // Docker command to run scraper
-  const dockerCommand = `
-    docker run -d --platform linux/amd64 --name ${containerName} \
-      -e FACEBOOK_ACCESS_TOKEN="${accessToken}" \
-      -e USER_ID="${userId}" \
-      -e USERNAME="${username || 'unknown'}" \
-      -e CONTAINER_INDEX=1 \
-      -e TOTAL_CONTAINERS=1 \
-      -v "${outputDir}:/app/output" \
-      shashwats500/facebook-scraper:latest
-  `.replace(/\s+/g, ' ').trim();
+  // If MongoDB is available, create Job record and update user token
+  try {
+    const Job = require('./backend/src/models/Job');
+    const User = require('./backend/src/models/User');
 
-  exec(dockerCommand, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`❌ Error starting container: ${error.message}`);
-      console.error(stderr);
-      return;
-    }
+    // Update user token if user exists
+    try {
+      const userDoc = await User.findById(userId);
+      if (userDoc) {
+        userDoc.facebookAccessToken = accessToken;
+        await userDoc.save();
+      }
+    } catch (e) { console.error('Webhook: failed to update user token:', e.message || e); }
 
-    const containerId = stdout.trim();
-    console.log(`✅ Container started successfully!`);
-    console.log(`Container ID: ${containerId}`);
-    
-    activeJobs.set(jobId, {
-      containerId,
-      containerName,
-      userId,
-      username,
-      startedAt: new Date(),
-      outputDir,
-      status: 'running'
+    // Create job record (queued) so main server worker will pick it up
+    const jobDoc = new Job({ jobId, userId, fbid: null, status: 'queued', outputPath: outputDir });
+    await jobDoc.save();
+
+    res.json({ success: true, jobId, message: 'Job queued via webhook', containerName, outputDir });
+  } catch (e) {
+    // fallback: start container directly (legacy behavior)
+    console.error('Webhook: MongoDB not available or failed, falling back to direct run', e.message || e);
+    const dockerCommand = `docker run -d --platform linux/amd64 --name ${containerName} -e FACEBOOK_ACCESS_TOKEN="${accessToken}" -e USER_ID="${userId}" -e USERNAME="${username || 'unknown'}" -v "${outputDir}:/app/output" shashwats500/facebook-scraper:latest`;
+    exec(dockerCommand, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`❌ Error starting container: ${error.message}`);
+        console.error(stderr);
+        return res.status(500).json({ error: 'Failed to start container' });
+      }
+      const containerId = stdout.trim();
+      activeJobs.set(jobId, { containerId, containerName, userId, username, startedAt: new Date(), outputDir, status: 'running' });
+      setTimeout(() => checkContainerStatus(jobId), 5000);
+      return res.json({ success: true, jobId, message: 'Container started (legacy fallback)' });
     });
-
-    // Monitor container status
-    setTimeout(() => checkContainerStatus(jobId), 5000);
-  });
-
-  // Respond immediately
-  res.json({
-    success: true,
-    jobId,
-    message: 'Scraping job started',
-    containerName,
-    outputDir
-  });
+  }
 });
 
 /**

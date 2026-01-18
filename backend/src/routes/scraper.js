@@ -65,54 +65,20 @@ router.post('/run', authenticateToken, async (req, res) => {
     const scraperOutputDir = path.join(__dirname, '..', '..', 'scraper_output', String(userId));
     fs.mkdirSync(scraperOutputDir, { recursive: true });
 
+    // Create a persistent Job record and queue it for processing by the worker
+    const Job = require('../models/Job');
     const jobId = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
     const statusFile = path.join(scraperOutputDir, `scrape.${jobId}.status.json`);
     const startedAt = new Date().toISOString();
 
-    const statusPayload = { jobId, status: 'processing', fbid: String(fbid), startedAt, logs: [] };
-    fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
+    const statusPayload = { jobId, status: 'queued', fbid: String(fbid), queuedAt: startedAt, logs: [] };
+    try { fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2)); } catch (e) { console.error('Failed to write status file:', e); }
 
-    // Build docker run command
-    const image = process.env.SCRAPER_IMAGE || 'shashwats500/facebook-scraper';
-    const mountHost = scraperOutputDir;
-    const mountContainer = '/app/output';
+    const jobDoc = new Job({ jobId, userId, fbid, status: 'queued', outputPath: scraperOutputDir });
+    await jobDoc.save();
 
-    const dockerArgs = [
-      'run', '--rm',
-      '-e', `ACCESS_TOKEN=${accessToken}`,
-      '-e', `FBID=${fbid}`,
-      '-v', `${mountHost}:${mountContainer}`,
-      image
-    ];
-
-    const dockerCmd = process.env.DOCKER_CMD || 'docker';
-    const child = spawn(dockerCmd, dockerArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
-
-    child.stdout.on('data', (d) => {
-      try {
-        const s = d.toString();
-        statusPayload.logs.push({ t: new Date().toISOString(), out: s });
-        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
-      } catch (e) { console.error(e); }
-    });
-    child.stderr.on('data', (d) => {
-      try {
-        const s = d.toString();
-        statusPayload.logs.push({ t: new Date().toISOString(), err: s });
-        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
-      } catch (e) { console.error(e); }
-    });
-
-    child.on('close', (code) => {
-      try {
-        statusPayload.finishedAt = new Date().toISOString();
-        statusPayload.exitCode = code;
-        statusPayload.status = code === 0 ? 'done' : 'failed';
-        fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2));
-      } catch (e) { console.error(e); }
-    });
-
-    return res.status(202).json({ jobId, statusUrl: `/api/scraper/job/${userId}/${jobId}` });
+    // Worker (running in background) will pick up queued jobs and run containers
+    return res.status(202).json({ jobId, statusUrl: `/api/scraper/job/${userId}/${jobId}`, message: 'Job queued' });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
@@ -126,6 +92,16 @@ router.get('/job/:userId/:jobId', authenticateToken, async (req, res) => {
     const { userId, jobId } = req.params;
     // ensure requester can only read their own jobs
     if (req.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
+    // Prefer Job record in DB
+    try {
+      const Job = require('../models/Job');
+      const job = await Job.findOne({ jobId, userId: req.userId }).lean();
+      if (job) return res.json({ job });
+    } catch (e) {
+      console.error('Failed to read job from DB', e.message || e);
+    }
+
+    // Fallback to legacy status file
     const statusFile = path.join(__dirname, '..', '..', 'scraper_output', String(userId), `scrape.${jobId}.status.json`);
     if (!fs.existsSync(statusFile)) return res.status(404).json({ error: 'Job not found' });
     const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
