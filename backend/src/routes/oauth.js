@@ -10,10 +10,20 @@ const User = require('../models/User');
 
 // Middleware to authenticate JWT token
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;  localStorage.getItem('access_token')   // shows a token
-  // ensure API_DEPLOYED_URL is null
-  localStorage.getItem('API_DEPLOYED_URL')
-  const token = authHeader && authHeader.split(' ')[1];
+  // Accept token from several sources for convenience in dev:
+  // - Authorization: Bearer <token>
+  // - x-access-token header
+  // - x-debug-token header
+  // - ?token= query param
+  const header = req.headers.authorization || req.headers['x-access-token'] || req.headers['x-debug-token'];
+  const queryToken = req.query && req.query.token;
+  let token = null;
+
+  if (header && typeof header === 'string') {
+    token = header.startsWith('Bearer ') ? header.split(' ')[1] : header;
+  } else if (queryToken) {
+    token = queryToken;
+  }
   
   if (!token) {
     return res.status(401).json({ message: 'No token provided' });
@@ -100,12 +110,12 @@ router.get('/facebook', (req, res) => {
   const redirectUri = process.env.FACEBOOK_REDIRECT_URI;
   const clientId = process.env.FACEBOOK_CLIENT_ID;
   
-  // Extract token from Authorization header or query param
-  const authHeader = req.headers.authorization;
+  // Extract token from Authorization header, x-access-token/x-debug-token, or query param
+  const header = req.headers.authorization || req.headers['x-access-token'] || req.headers['x-debug-token'];
   let state = '';
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    state = authHeader.substring(7);
+
+  if (header && typeof header === 'string') {
+    state = header.startsWith('Bearer ') ? header.substring(7) : header;
   } else if (req.query.token) {
     state = req.query.token;
   }
@@ -196,7 +206,7 @@ router.get('/facebook/callback', async (req, res) => {
     let user;
     if (!userId) {
       // No logged-in user - redirect back with error
-      const frontendBase = 'http://localhost:3000';
+      const frontendBase = process.env.FRONTEND_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
       const frontendUrl = `${frontendBase}/social-accounts`;
       const params = new URLSearchParams({
         error: 'facebook',
@@ -208,7 +218,7 @@ router.get('/facebook/callback', async (req, res) => {
     // Link Facebook to the currently logged-in user
     user = await User.findById(userId);
     if (!user) {
-      const frontendBase = 'http://localhost:3000';
+      const frontendBase = process.env.FRONTEND_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
       const frontendUrl = `${frontendBase}/social-accounts`;
       const params = new URLSearchParams({
         error: 'facebook',
@@ -237,7 +247,7 @@ router.get('/facebook/callback', async (req, res) => {
       // Create a JWT for frontend authentication and redirect with it
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
       // Always use localhost for frontend since only backend is deployed
-      const frontendBase = 'http://localhost:3000';
+      const frontendBase = process.env.FRONTEND_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
       const frontendUrl = `${frontendBase}/social-accounts`;
       const params = new URLSearchParams({
         success: 'true',
@@ -251,7 +261,7 @@ router.get('/facebook/callback', async (req, res) => {
   } catch (err) {
       console.error('Facebook OAuth error:', err.response?.data || err.message || err);
       // Redirect to frontend with error - always use localhost since only backend is deployed
-    const frontendBase = 'http://localhost:3000';
+    const frontendBase = process.env.FRONTEND_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
     const frontendUrl = `${frontendBase}/social-accounts`;
     const params = new URLSearchParams({
       error: 'facebook',
