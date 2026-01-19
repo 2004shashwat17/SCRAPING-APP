@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
 import Avatar from '@mui/material/Avatar';
 import { apiClient, getApiBaseUrl } from '../../services/apiClient';
-import FacebookCaptureModal from './FacebookCaptureModal';
+// Removed modal import — opening headful browser directly instead
 import type { SocialAccount, OAuthAccountsResponse } from '../../types/api';
 
 const SocialAccountsOAuthView: React.FC = () => {
@@ -25,8 +25,9 @@ const SocialAccountsOAuthView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [showCaptureModal, setShowCaptureModal] = useState(false);
+  // removed unused capture modal state (headful flow opens browser directly)
   const [captureStatus, setCaptureStatus] = useState<'idle'|'pending'|'success'|'error'>('idle');
+  const [facebookConnectedLocal, setFacebookConnectedLocal] = useState<boolean>(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -50,6 +51,10 @@ const SocialAccountsOAuthView: React.FC = () => {
       const response = await apiClient.get<OAuthAccountsResponse>('/api/oauth/accounts');
       setAccounts(response.data.accounts || []);
       setCurrentUser(response.data.user || null);
+      // reset local connected override if server does not report connected
+      const userAny = response.data.user as any;
+      if (!userAny || !userAny.facebookConnected) setFacebookConnectedLocal(false);
+      if (userAny && userAny.facebookConnected) setFacebookConnectedLocal(true);
       setError(null); // Clear any previous errors on success
     } catch (err: any) {
       console.error('Error loading accounts:', err);
@@ -120,18 +125,50 @@ const SocialAccountsOAuthView: React.FC = () => {
     handleOAuthCallback();
   }, [searchParams, navigate]);
 
-  const handleConnect = (platform: string) => {
+  const handleConnect = async (platform: string) => {
     setConnecting(platform);
     setError(null);
     // For Facebook, redirect directly to backend OAuth endpoint with token
     if (platform === 'facebook') {
       const token = localStorage.getItem('access_token');
-      // Use the base URL without /api/v1 suffix for OAuth routes
-      const baseUrl = getApiBaseUrl().replace('/api/v1', '').replace(/\/api$/, '');
-      const url = token 
+      // If there's no access token, don't attempt OAuth — prompt the user to login first.
+      if (!token) {
+        setError('Please login first before connecting Facebook');
+        setConnecting(null);
+        return;
+      }
+      // Verify token is still valid before redirecting
+      try {
+        await apiClient.getCurrentUser();
+      } catch (e: any) {
+        console.warn('Access token invalid or expired:', e?.message || e);
+        setError('Your session appears to be expired. Please sign in again before connecting Facebook.');
+        apiClient.setToken(null);
+        localStorage.removeItem('access_token');
+        setConnecting(null);
+        return;
+      }
+
+      // Prefer an explicit deployed backend URL for OAuth redirects.
+      // Sources (in order): localStorage `API_DEPLOYED_URL`, environment `REACT_APP_BACKEND_URL`, fallback to `getApiBaseUrl()`.
+      const deployedOverride = (() => {
+        try {
+          const v = localStorage.getItem('API_DEPLOYED_URL');
+          if (v) return v;
+        } catch (e) {
+          // ignore
+        }
+        if (process.env.REACT_APP_BACKEND_URL) return process.env.REACT_APP_BACKEND_URL;
+        return null;
+      })();
+
+      const rawBase = deployedOverride || getApiBaseUrl();
+      // Normalize base and ensure no trailing slash
+      const baseUrl = rawBase.replace(/\/$/, '').replace(/\/api(\/v1)?$/, '');
+      const url = token
         ? `${baseUrl}/api/oauth/facebook?token=${encodeURIComponent(token)}`
         : `${baseUrl}/api/oauth/facebook`;
-      console.log('Redirecting to:', url);
+      console.log('Redirecting to (Facebook OAuth):', url);
       window.location.href = url;
       return;
     }
@@ -167,6 +204,79 @@ const SocialAccountsOAuthView: React.FC = () => {
       setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to disconnect');
     } finally {
       setDisconnecting(null);
+    }
+  };
+
+  const openHeadfulBrowser = async () => {
+    setCaptureStatus('pending');
+    setError(null);
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) throw new Error('Not authenticated');
+      const resp = await apiClient.post('/api/facebook/open-headful', { waitForFullSession: true });
+      // resp.data should contain sessionId and message
+      setCaptureStatus('pending');
+      const sessionId = resp?.data?.sessionId;
+      // show a brief message that headful opened
+      setSuccessMessage(resp?.data?.message || 'Headful browser opened. Complete login in the window.');
+      setTimeout(() => setSuccessMessage(null), 5000);
+
+      // If we received a sessionId, poll the check-session endpoint until backend reports saved
+      if (sessionId) {
+        const start = Date.now();
+        const timeoutMs = 10 * 60 * 1000; // 10 minutes max (matches server)
+        let pollInterval = 2000; // 2s base
+        while (Date.now() - start < timeoutMs) {
+          let checkResp: any = null;
+          try {
+            checkResp = await apiClient.post('/api/facebook/check-session', { sessionId, waitMs: 0, postDetectWaitMs: 0, postCaptchaWaitMs: 0 });
+            if (checkResp?.data?.status === 'ok') {
+              // merge any returned user info immediately (but do NOT assume 'connected' unless the
+              // server explicitly reports `user.facebookConnected`)
+              if (checkResp.data.user) {
+                setCurrentUser((prev: any) => prev ? { ...prev, ...checkResp.data.user } : checkResp.data.user);
+              }
+              // refresh accounts in background to ensure server-side state is consistent
+              loadAccounts().catch(() => {});
+              // Only set local connected override when the server explicitly reports the account as connected
+              if (checkResp.data.user && checkResp.data.user.facebookConnected) {
+                setFacebookConnectedLocal(true);
+                setCaptureStatus('success');
+                setSuccessMessage('Facebook analysis connected — cookies saved');
+                setTimeout(() => setSuccessMessage(null), 5000);
+                return;
+              }
+              // Otherwise, cookies were saved but the server did not mark the account connected.
+              setCaptureStatus('success');
+              setSuccessMessage('Cookies saved for analysis (not marked connected)');
+              setTimeout(() => setSuccessMessage(null), 5000);
+              return;
+            } else if (checkResp?.data?.status === 'captcha_required') {
+              setCaptureStatus('pending');
+              setError('CAPTCHA detected. Please solve it in the opened browser window.');
+            }
+          } catch (e: any) {
+            console.warn('check-session poll error', e?.message || e);
+          }
+          // if server suggested a retryAfterMs, use it; otherwise use exponential backoff up to 10s
+          const suggested = (Array.isArray(checkResp?.data) ? null : checkResp?.data?.retryAfterMs) as number | undefined;
+          if (suggested && Number.isFinite(suggested) && suggested > 0) {
+            await new Promise(r => setTimeout(r, suggested));
+            pollInterval = Math.max(2000, Math.min(10000, Math.floor(suggested)));
+          } else {
+            await new Promise(r => setTimeout(r, pollInterval));
+            pollInterval = Math.min(10000, Math.floor(pollInterval * 1.5));
+          }
+        }
+        // timed out
+        setCaptureStatus('error');
+        setError('Timed out waiting for session to be saved. Try again.');
+        return;
+      }
+    } catch (err: any) {
+      console.error('Failed to open headful browser', err);
+      setError(err?.message || err?.data?.detail || 'Failed to open headful browser');
+      setCaptureStatus('error');
     }
   };
 
@@ -331,22 +441,28 @@ const SocialAccountsOAuthView: React.FC = () => {
                 <Box>
                   <Typography variant="h6">Facebook Analysis</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    {currentUser.facebookConnected
-                      ? 'Connected — cookies saved in MongoDB'
+                    {(facebookConnectedLocal || currentUser?.facebookConnected)
+                      ? 'Connected — cookies saved'
                       : 'Not enabled. Use the button to save cookies for analysis.'}
                   </Typography>
-                  {currentUser.facebookConnected && (
+                  {(facebookConnectedLocal || currentUser?.facebookConnected) && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Saved: {currentUser.facebookConnectedAt ? new Date(currentUser.facebookConnectedAt).toLocaleString() : 'Recently'}
+                      Saved: {currentUser?.facebookConnectedAt ? new Date(currentUser.facebookConnectedAt).toLocaleString() : 'Recently'}
                     </Typography>
                   )}
                 </Box>
 
                 <Box>
-                  <Button variant="contained" onClick={() => setShowCaptureModal(true)} disabled={captureStatus === 'pending'}>
-                    {captureStatus === 'pending' ? <CircularProgress size={18} /> : 'Enable Facebook Analysis'}
-                  </Button>
-                  {/* Dev test removed in favor of production flow */}
+                  {(facebookConnectedLocal || currentUser?.facebookConnected) ? (
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Chip label="Connected" color="success" icon={<CheckCircle />} />
+                      <Button variant="outlined" size="small" onClick={() => loadAccounts()} startIcon={<Refresh />}>Refresh</Button>
+                    </Box>
+                  ) : (
+                    <Button variant="contained" onClick={() => openHeadfulBrowser()}>
+                      Enable Facebook Analysis
+                    </Button>
+                  )}
                 </Box>
               </Box>
             </CardContent>
@@ -355,9 +471,7 @@ const SocialAccountsOAuthView: React.FC = () => {
       </Box>
 
       {/* Note removed as requested */}
-      {currentUser && (
-        <FacebookCaptureModal open={showCaptureModal} onClose={() => setShowCaptureModal(false)} onStatusChange={setCaptureStatus} />
-      )}
+      {/* Modal removed: headful browser opens directly when user clicks the Enable button */}
     </Box>
   );
 };

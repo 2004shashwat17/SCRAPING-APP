@@ -10,7 +10,9 @@ const User = require('../models/User');
 
 // Middleware to authenticate JWT token
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+  const authHeader = req.headers.authorization;  localStorage.getItem('access_token')   // shows a token
+  // ensure API_DEPLOYED_URL is null
+  localStorage.getItem('API_DEPLOYED_URL')
   const token = authHeader && authHeader.split(' ')[1];
   
   if (!token) {
@@ -50,7 +52,11 @@ router.get('/accounts', authenticateToken, async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        avatar: user.avatar
+        avatar: user.avatar,
+        facebookConnected: !!user.facebookConnected,
+        facebookConnectedAt: user.facebookConnectedAt ? user.facebookConnectedAt : undefined,
+        facebookName: user.facebookName,
+        facebookEmail: user.facebookEmail
       }
     });
   } catch (err) {
@@ -103,8 +109,26 @@ router.get('/facebook', (req, res) => {
   } else if (req.query.token) {
     state = req.query.token;
   }
-  
+  // If a state token was provided, verify it now so we do not redirect to Facebook with an
+  // invalid/malformed token that will fail on callback verification.
+  if (state) {
+    try {
+      const decoded = jwt.verify(state, process.env.JWT_SECRET);
+      console.log('[OAuth] /facebook requested - valid state token for userId:', decoded.userId ? decoded.userId : '[unknown]');
+    } catch (err) {
+      console.warn('[OAuth] /facebook requested - invalid state token:', err && err.message ? err.message : String(err));
+      const frontendBase = process.env.FRONTEND_BASE_URL || 'http://localhost:3000';
+      const frontendUrl = `${frontendBase}/social-accounts`;
+      const params = new URLSearchParams({ error: 'facebook', details: 'Invalid or expired session token — please sign in and try again' });
+      return res.redirect(`${frontendUrl}?${params.toString()}`);
+    }
+  } else {
+    console.log('[OAuth] /facebook requested - no state token supplied');
+  }
+
+  // Build the OAuth URL and redirect to Facebook
   const fbAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email,public_profile&state=${encodeURIComponent(state)}`;
+  console.log('[OAuth] redirecting to Facebook OAuth URL', fbAuthUrl.replace(/(state=)[^&]+/, '$1[snipped]'));
   res.redirect(fbAuthUrl);
 });
 
@@ -124,8 +148,28 @@ router.get('/facebook/callback', async (req, res) => {
         const decoded = jwt.verify(state, process.env.JWT_SECRET);
         userId = decoded.userId;
       } catch (err) {
-        console.error('Invalid state token:', err.message);
+        // log more context to help debugging
+        console.error('[OAuth] Invalid state token during callback verify:', err.message, 'statePreview=', state ? state.slice(0, 12) + '...' : 'none');
+        // Try a non-verified decode to inspect payload (useful for debugging only)
+        try {
+          const raw = jwt.decode(state);
+          console.log('[OAuth] Decoded state (no verify):', raw);
+        } catch (dErr) {
+          console.warn('[OAuth] Failed to decode state for debugging:', dErr && dErr.message ? dErr.message : dErr);
+        }
       }
+    }
+
+    // If no valid state/userId was found, redirect with a clearer error message
+    if (!userId) {
+      console.warn('[OAuth] No valid state token/userId found in callback; refusing to link account.');
+      const frontendBase = process.env.FRONTEND_BASE_URL || 'http://localhost:3000';
+      const frontendUrl = `${frontendBase}/social-accounts`;
+      const params = new URLSearchParams({
+        error: 'facebook',
+        details: 'Missing or invalid state token — please login first and retry connecting Facebook',
+      });
+      return res.redirect(`${frontendUrl}?${params.toString()}`);
     }
 
     // Exchange code for access token
@@ -218,3 +262,18 @@ router.get('/facebook/callback', async (req, res) => {
 });
 
 module.exports = router;
+
+// Development-only: verify a JWT token quickly for debugging purposes
+if (process.env.NODE_ENV === 'development') {
+  router.get('/debug-verify-token', (req, res) => {
+    const token = req.query.token || req.headers['x-debug-token'];
+    if (!token) return res.status(400).json({ error: 'Missing token query param or x-debug-token header' });
+    try {
+      const decoded = jwt.verify(String(token), process.env.JWT_SECRET);
+      return res.json({ valid: true, decoded });
+    } catch (err) {
+      const decoded = jwt.decode(String(token));
+      return res.json({ valid: false, error: err && err.message ? err.message : String(err), decoded });
+    }
+  });
+}

@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const puppeteer = require('puppeteer');
+const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { encryptJSON } = require('../utils/cryptoCookies');
@@ -11,7 +12,13 @@ const User = require('../models/User');
 const router = express.Router();
 
 const sessions = new Map();
+// Tracks sessions whose cookies have been saved so frontend can detect success
+// even after the Puppeteer session is closed.
+const savedSessions = new Map();
 const TIMEOUT = parseInt(process.env.COOKIE_CAPTURE_TIMEOUT_MS || '45000', 10);
+// Maximum time to wait for a user to complete headful login/2FA/captcha (ms).
+// Can be overridden with env `MAX_CAPTURE_WAIT_MS`. Default: 15 minutes.
+const MAX_CAPTURE_WAIT_MS = parseInt(process.env.MAX_CAPTURE_WAIT_MS || String(15 * 60 * 1000), 10);
 const COOKIES_DIR = path.join(__dirname, '..', '..', 'cookies');
 
 if (!fs.existsSync(COOKIES_DIR)) {
@@ -50,6 +57,36 @@ async function waitForSessionCookies(page, timeoutMs = Math.max(TIMEOUT, 30000),
 
 // simple sleep helper
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Save cookies only if they include the required session cookies (c_user & xs),
+// unless `force` is true. Returns { saved: boolean, filepath?: string }
+async function saveCookiesSafely(sessionId, userId, cookies = [], force = false) {
+  try {
+    const names = (cookies || []).map(c => c.name);
+    const hasFull = names.includes('c_user') && names.includes('xs');
+    if (!hasFull && !force) {
+      console.log(`facebookCapture: session=${sessionId} not saved — missing c_user/xs — saw: ${names.join(',')}`);
+      return { saved: false };
+    }
+    const filename = `${userId}_${Date.now()}.json`;
+    const filepath = path.join(COOKIES_DIR, filename);
+    try { fs.writeFileSync(filepath, JSON.stringify(cookies || [], null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
+    try { fs.writeFileSync(path.join(COOKIES_DIR, `session_${sessionId}.json`), JSON.stringify({ filepath, userId, savedAt: Date.now() }), { encoding: 'utf8', mode: 0o600 }); } catch (e) { /* ignore */ }
+    savedSessions.set(sessionId, { filepath, userId, savedAt: Date.now() });
+    let encrypted; try { encrypted = encryptJSON(cookies || []); } catch (e) { console.error('encrypt failed', e); }
+    // Do NOT automatically set `facebookConnected` here — callers should decide when to mark the
+    // user as connected (e.g., after confirming a full c_user+xs session or after manual verification).
+    // We still persist encrypted cookies and the cookie filepath; update the DB only if the caller
+    // explicitly wants to mark the user connected.
+    if (process.env.MONGODB_URI && mongoose.connection.readyState === 1) {
+      try { await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath }); } catch (dbErr) { console.error('Failed to update user in DB (saveCookiesSafely metadata):', dbErr && dbErr.message ? dbErr.message : dbErr); }
+    }
+    return { saved: true, filepath };
+  } catch (e) {
+    console.error('saveCookiesSafely error', e && e.message ? e.message : e);
+    return { saved: false };
+  }
+}
 
 // Helper: try multiple selectors and return the first that exists
 async function findSelector(page, selectors = [], timeout = 8000) {
@@ -178,13 +215,13 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       const cookies = await page.cookies();
-      const filename = `${userId}_${Date.now()}.json`;
-      const filepath = path.join(COOKIES_DIR, filename);
-      try {
-        fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-      } catch (e) {
-        console.error('Failed to write cookie file:', e);
+      const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+      if (!saved.saved) {
+        await browser.close();
+        sessions.delete(sessionId);
+        return res.json({ status: 'no_session', message: 'Session cookies (c_user & xs) not present after dev-start', cookies, retryAfterMs: 3000 });
       }
+      const filepath = saved.filepath;
       let encrypted;
       try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
 
@@ -195,7 +232,8 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       try {
-        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+        // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
       } catch (dbErr) {
         await browser.close();
         sessions.delete(sessionId);
@@ -268,11 +306,9 @@ if (process.env.NODE_ENV === 'development') {
         return res.json({ status: 'captcha_required', sessionId, message: 'CAPTCHA detected after waiting for post-2FA; please solve it in the browser.' });
       }
       const cookies = await waitForSessionCookies(page, Math.max(10000, postWaitMs + 10000));
-      const filename = `${userId}_${Date.now()}.json`;
-      const filepath = path.join(COOKIES_DIR, filename);
-        try {
-          fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-        } catch (e) { console.error('Failed to write cookie file:', e); }
+      const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+      if (!saved.saved) return res.json({ status: 'no_session', message: 'Session cookies not present after 2FA wait', cookies, retryAfterMs: 3000 });
+      const filepath = saved.filepath;
       let encrypted;
       try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
 
@@ -283,7 +319,8 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       try {
-        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+        // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
       } catch (dbErr) {
         await browser.close();
         sessions.delete(sessionId);
@@ -362,7 +399,7 @@ if (process.env.NODE_ENV === 'development') {
         const names2 = (cookies2 || []).map(c => c.name);
         if (!names2.includes('c_user') || !names2.includes('xs')) {
           console.warn('session cookies disappeared after postDetect wait; names before:', names, 'after:', names2);
-          return res.json({ status: 'no_session', message: 'Session cookies not present after post-detect wait', cookies: cookies2 || [] });
+          return res.json({ status: 'no_session', message: 'Session cookies not present after post-detect wait', cookies: cookies2 || [], retryAfterMs: 3000 });
         }
         // replace cookies with latest
         cookies.splice(0, cookies.length, ...(cookies2 || []));
@@ -375,15 +412,18 @@ if (process.env.NODE_ENV === 'development') {
           const htmlName = `${userId}_${Date.now()}_no_session_check.html`;
           await fs.promises.writeFile(path.join(COOKIES_DIR, htmlName), await page.content(), { encoding: 'utf8', mode: 0o600 });
         } catch (e) { console.warn('failed to save no_session_check debug artifacts', e); }
-        return res.json({ status: 'no_session', message: 'No session cookies present yet', cookies: cookies || [], debug: { screenshot: null } });
+        return res.json({ status: 'no_session', message: 'No session cookies present yet', cookies: cookies || [], debug: { screenshot: null }, retryAfterMs: 3000 });
       }
 
-      const filename = `${userId}_${Date.now()}.json`;
-      const filepath = path.join(COOKIES_DIR, filename);
-      try { fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
+      const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+      if (!saved.saved) {
+        try { await browser.close(); } catch (_) {}
+        sessions.delete(sessionId);
+        return res.json({ status: 'no_session', message: 'Session cookies not present', cookies, retryAfterMs: 3000 });
+      }
+      const filepath = saved.filepath;
 
-      let encrypted;
-      try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
+      // encryption handled inside saveCookiesSafely already
 
       if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
         try { await browser.close(); } catch (_) {}
@@ -392,7 +432,8 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       try {
-        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+        // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
       } catch (dbErr) {
         try { await browser.close(); } catch (_) {}
         sessions.delete(sessionId);
@@ -421,6 +462,10 @@ router.post('/start', async (req, res) => {
   if (!userId || !fbEmail || !fbPassword) return res.status(400).json({ error: 'Missing required fields' });
 
   const sessionId = uuidv4();
+  // Client may request we wait for a full session (c_user & xs) before saving/closing.
+  // Default: true (wait for full login/2FA). If false, we'll save on profile detection.
+  const waitForFullSession = !(req.body && req.body.waitForFullSession === false);
+  console.log(`facebookCapture: open-headful requested session=${sessionId} user=${userId} waitForFullSession=${waitForFullSession}`);
   let browser;
   try {
     const headful = !!req.body.headful;
@@ -526,16 +571,12 @@ router.post('/start', async (req, res) => {
       return res.status(500).json({ error: 'Login did not produce session cookies (c_user/xs). Check for checkpoint/2FA or site changes.' });
     }
 
-    // save cookie file to backend/cookies
-    const filename = `${userId}_${Date.now()}.json`;
-    const filepath = path.join(COOKIES_DIR, filename);
-    // Set strict file permissions and write file
-    try {
-      fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-    } catch (e) {
-      console.error('Failed to write cookie file:', e);
-      return res.status(500).json({ error: 'Failed to save cookie file', details: e.message });
+    // Save cookie file only if full session cookies are present
+    const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+    if (!saved.saved) {
+      return res.status(500).json({ error: 'Login did not produce full session cookies (c_user/xs). Check for checkpoint/2FA or site changes.' });
     }
+    const filepath = saved.filepath;
 
     // encrypt and save to DB if possible
     let encrypted;
@@ -550,7 +591,8 @@ router.post('/start', async (req, res) => {
     }
 
     try {
-      await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+      // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+      await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
     } catch (dbErr) {
       console.error('Failed to update user in DB:', dbErr.message || dbErr);
       try { await browser.close(); } catch(_) {}
@@ -578,12 +620,25 @@ router.post('/open-headful', async (req, res) => {
   const sessionId = uuidv4();
   let browser;
   try {
+    // Use a fresh user data dir to avoid inherited DevTools/extension state
+    const userDataDir = path.join(os.tmpdir(), `puppeteer_profile_${sessionId}`);
     const launchOpts = {
       headless: false,
-      // Do not open DevTools; keep the browser responsive for manual login
       devtools: false,
       slowMo: 0,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized', '--window-size=1280,800']
+      userDataDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-infobars',
+        '--disable-dev-shm-usage',
+        '--start-maximized',
+        '--window-size=1280,800'
+      ]
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
     browser = await puppeteer.launch(launchOpts);
@@ -593,36 +648,85 @@ router.post('/open-headful', async (req, res) => {
     await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2' }).catch(() => {});
     const ws = browser.wsEndpoint ? browser.wsEndpoint() : undefined;
 
-    // Start a background watcher that waits for session cookies and saves them
-    // as soon as they appear (so the visible browser can be closed automatically).
+    // Start a background watcher that watches the page URL and cookies.
+    // If the user navigates to their profile/home page or cookies appear,
+    // save cookies and close the browser promptly.
     (async () => {
       try {
-        const cookies = await waitForSessionCookies(page, 10 * 60 * 1000, 1000); // wait up to 10 minutes
-        const names = (cookies || []).map(c => c.name);
-        const hasSession = names.includes('c_user') && names.includes('xs');
-        if (!hasSession) {
-          // nothing to do
-          return;
-        }
-
-        const filename = `${userId}_${Date.now()}.json`;
-        const filepath = path.join(COOKIES_DIR, filename);
-        try { fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file (open-headful watcher):', e); }
-
-        let encrypted;
-        try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed (open-headful watcher)', e); }
-
-        if (process.env.MONGODB_URI && mongoose.connection.readyState === 1) {
+        const profileIndicators = ['/profile.php', '/me', '/home', '/settings', '/friends', '/photos'];
+        const start = Date.now();
+        const deadline = start + MAX_CAPTURE_WAIT_MS; // configurable max wait
+        console.log(`facebookCapture: watcher started for session ${sessionId}, waiting up to ${MAX_CAPTURE_WAIT_MS}ms`);
+        while (Date.now() < deadline) {
           try {
-            await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
-          } catch (dbErr) {
-            console.error('Failed to update user in DB (open-headful watcher):', dbErr && dbErr.message ? dbErr.message : dbErr);
-          }
-        }
+            // First, check cookies immediately — if c_user & xs present, save and exit
+            const cookiesNow = await page.cookies().catch(() => []);
+            const namesNow = (cookiesNow || []).map(c => c.name);
+            if (namesNow.length > 0) console.log(`facebookCapture: session=${sessionId} seen cookie names: ${namesNow.join(',')}`);
+            if (namesNow.includes('c_user') && namesNow.includes('xs')) {
+              const filename = `${userId}_${Date.now()}.json`;
+              const filepath = path.join(COOKIES_DIR, filename);
+              const savedNow = await saveCookiesSafely(sessionId, userId, cookiesNow || [], false);
+              if (!savedNow.saved) {
+                // not a full session yet, keep waiting
+              } else {
+                try { await browser.close(); } catch (e) { /* ignore */ }
+                sessions.delete(sessionId);
+                console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (cookies detected)`);
+                return;
+              }
+              try { await browser.close(); } catch (e) { /* ignore */ }
+              sessions.delete(sessionId);
+              console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (cookies detected)`);
+              return;
+            }
 
+            const currentUrl = page.url();
+            // quick check: if user reached a profile/home-like URL
+            if (profileIndicators.some(ind => currentUrl.includes(ind))) {
+              console.log(`facebookCapture: session=${sessionId} profile URL detected: ${currentUrl}`);
+              // User has likely navigated to profile/home.
+              const cookiesQuick = cookiesNow;
+              const namesQuick = (cookiesQuick || []).map(c => c.name);
+              const hasSessionQuick = namesQuick.includes('c_user') && namesQuick.includes('xs');
+              if (waitForFullSession) {
+                // Wait for full session cookies; if present, save+close; otherwise continue waiting.
+                if (hasSessionQuick) {
+                  const filename = `${userId}_${Date.now()}.json`;
+                  const filepath = path.join(COOKIES_DIR, filename);
+                  const savedQuick = await saveCookiesSafely(sessionId, userId, cookiesQuick || [], false);
+                  if (!savedQuick.saved) {
+                    // not a full session yet, continue waiting
+                  } else {
+                    try { await browser.close(); } catch (e) { /* ignore */ }
+                    sessions.delete(sessionId);
+                    console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (profile URL detected, full session present)`);
+                    return;
+                  }
+                }
+                // otherwise continue waiting for c_user/xs
+              } else {
+                // Old behavior: save whatever cookies exist and close promptly
+                const filename = `${userId}_${Date.now()}.json`;
+                const filepath = path.join(COOKIES_DIR, filename);
+                const savedQuick2 = await saveCookiesSafely(sessionId, userId, cookiesQuick || [], false);
+                if (savedQuick2.saved) {
+                  try { await browser.close(); } catch (e) { /* ignore */ }
+                  sessions.delete(sessionId);
+                  console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (profile URL detected)`);
+                  return;
+                }
+              }
+            }
+          } catch (e) {
+            // ignore transient errors
+          }
+          await sleep(1000);
+        }
+        // timeout reached: do not keep browser open indefinitely
         try { await browser.close(); } catch (e) { /* ignore */ }
         sessions.delete(sessionId);
-        console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId}`);
+        console.log(`facebookCapture: open-headful watcher timeout, closed session ${sessionId}`);
       } catch (e) {
         console.warn('open-headful watcher error', e && e.message ? e.message : e);
       }
@@ -642,8 +746,28 @@ router.post('/submit-2fa', async (req, res) => {
   const userId = req.userId;
   const { sessionId, code } = req.body;
   if (!sessionId || !code || !userId) return res.status(400).json({ error: 'Missing required fields' });
-  const session = sessions.get(sessionId);
-  if (!session) return res.status(410).json({ error: 'Session not found or expired' });
+  let session = sessions.get(sessionId);
+    if (!session) {
+    // Session not found in memory — maybe the watcher already saved cookies and closed the browser.
+    // Check savedSessions map or a session marker file on disk.
+    const saved = savedSessions.get(sessionId);
+    if (saved) {
+      // Cookies were previously saved for this session. Do not claim the user is "connected";
+      // return a neutral confirmation that cookies exist and when they were saved.
+      return res.json({ status: 'ok', message: 'Cookies previously saved', filepath: saved.filepath, cookiesSavedAt: new Date(saved.savedAt).toISOString() });
+    }
+    // fallback: check for marker file on disk
+    const markerPath = path.join(COOKIES_DIR, `session_${sessionId}.json`);
+    if (fs.existsSync(markerPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+        return res.json({ status: 'ok', message: 'Cookies previously saved', filepath: data.filepath, cookiesSavedAt: new Date(data.savedAt).toISOString() });
+      } catch (e) {
+        // continue to return 410 below
+      }
+    }
+    return res.status(410).json({ error: 'Session not found or expired' });
+  }
   if (session.userId !== userId) return res.status(403).json({ error: 'Session does not belong to this user' });
   if (!session) return res.status(410).json({ error: 'Session not found or expired' });
 
@@ -674,11 +798,9 @@ router.post('/submit-2fa', async (req, res) => {
     if (postWaitMs > 5 * 60 * 1000) postWaitMs = 5 * 60 * 1000; // cap 5 minutes
     await sleep(postWaitMs);
     const cookies = await waitForSessionCookies(page, Math.max(10000, postWaitMs + 10000));
-    const filename = `${userId}_${Date.now()}.json`;
-    const filepath = path.join(COOKIES_DIR, filename);
-    try {
-      fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-    } catch (e) { console.error('Failed to write cookie file:', e); }
+    const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+    if (!saved.saved) return res.json({ status: 'no_session', message: 'Session cookies not present after post-2FA wait', cookies, retryAfterMs: 3000 });
+    const filepath = saved.filepath;
 
     // encrypt and save to DB if possible
     let encrypted;
@@ -693,7 +815,8 @@ router.post('/submit-2fa', async (req, res) => {
     }
 
     try {
-      await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+      // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+      await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
     } catch (dbErr) {
       console.error('Failed to update user in DB:', dbErr.message || dbErr);
       try { await browser.close(); } catch(_) {}
@@ -762,13 +885,18 @@ router.post('/check-session', async (req, res) => {
       }
     }
 
+    // If we don't yet have the required session cookies, report no_session
+    if (!hasSession) {
+      return res.json({ status: 'no_session', message: 'Session cookies not present yet', cookies: cookies || [], retryAfterMs: 3000 });
+    }
+
     if (hasSession && postDetectWaitMs > 0) {
       await sleep(postDetectWaitMs);
       const cookies2 = await page.cookies().catch(() => []);
       const names2 = (cookies2 || []).map(c => c.name);
       if (!names2.includes('c_user') || !names2.includes('xs')) {
         console.warn('session cookies disappeared after postDetect wait; names before:', names, 'after:', names2);
-        return res.json({ status: 'no_session', message: 'Session cookies not present after post-detect wait', cookies: cookies2 || [] });
+        return res.json({ status: 'no_session', message: 'Session cookies not present after post-detect wait', cookies: cookies2 || [], retryAfterMs: 3000 });
       }
       cookies.splice(0, cookies.length, ...(cookies2 || []));
     }
@@ -776,18 +904,18 @@ router.post('/check-session', async (req, res) => {
     // Save cookie file
     const filename = `${userId}_${Date.now()}.json`;
     const filepath = path.join(COOKIES_DIR, filename);
-    try { fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
+    try { const saved = await saveCookiesSafely(sessionId, userId, cookies, false); if (!saved.saved) { return res.json({ status: 'no_session', message: 'Session cookies not present', cookies, retryAfterMs: 3000 }); } filepath = saved.filepath; } catch (e) { console.error('Failed to save cookies safely:', e); }
     let encrypted; try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
     if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
       try { await browser.close(); } catch (_) {}
       sessions.delete(sessionId);
       return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
     }
-    try { await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() }); } catch (dbErr) { try { await browser.close(); } catch (_) {} sessions.delete(sessionId); return res.json({ status: 'ok', message: 'Cookies saved to file but failed to update DB', filepath, dbError: dbErr.message || String(dbErr) }); }
+    try { await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath }); } catch (dbErr) { try { await browser.close(); } catch (_) {} sessions.delete(sessionId); return res.json({ status: 'ok', message: 'Cookies saved to file but failed to update DB', filepath, cookiesSavedAt: new Date().toISOString(), dbError: dbErr.message || String(dbErr) }); }
 
     try { await browser.close(); } catch (_) {}
     sessions.delete(sessionId);
-    return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath });
+    return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath, cookiesSavedAt: new Date().toISOString() });
   } catch (err) {
     console.error('check-session error', err);
     try { await browser.close(); } catch (_) {}
@@ -882,22 +1010,17 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       const cookies = await page.cookies();
-      const filename = `${userId}_${Date.now()}.json`;
-      const filepath = path.join(COOKIES_DIR, filename);
-      try {
-        fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-      } catch (e) { console.error('Failed to write cookie file:', e); }
-      let encrypted;
-      try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
-
-      if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
+      const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+      if (!saved.saved) {
         await browser.close();
         sessions.delete(sessionId);
-        return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
+        return res.json({ status: 'no_session', message: 'Session cookies not present', cookies, retryAfterMs: 3000 });
       }
+      const filepath = saved.filepath;
 
       try {
-        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+        // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
       } catch (dbErr) {
         await browser.close();
         sessions.delete(sessionId);
@@ -940,22 +1063,17 @@ if (process.env.NODE_ENV === 'development') {
       }
 
       const cookies = await page.cookies();
-      const filename = `${userId}_${Date.now()}.json`;
-      const filepath = path.join(COOKIES_DIR, filename);
-      try {
-        fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 });
-      } catch (e) { console.error('Failed to write cookie file:', e); }
-      let encrypted;
-      try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed', e); }
-
-      if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
+      const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
+      if (!saved.saved) {
         await browser.close();
         sessions.delete(sessionId);
-        return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
+        return res.json({ status: 'no_session', message: 'Session cookies not present', cookies, retryAfterMs: 3000 });
       }
+      const filepath = saved.filepath;
 
       try {
-        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+        // Persist cookie metadata only — do not mark the user `facebookConnected` automatically.
+        await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
       } catch (dbErr) {
         await browser.close();
         sessions.delete(sessionId);

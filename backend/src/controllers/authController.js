@@ -51,7 +51,11 @@ exports.getCurrentUser = async (req, res) => {
       username: user.username, 
       email: user.email, 
       avatar: user.avatar,
-      is_active: true 
+      is_active: true,
+      facebookConnected: !!user.facebookConnected,
+      facebookConnectedAt: user.facebookConnectedAt ? user.facebookConnectedAt : undefined,
+      facebookName: user.facebookName,
+      facebookEmail: user.facebookEmail
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
