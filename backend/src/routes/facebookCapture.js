@@ -114,11 +114,13 @@ if (process.env.NODE_ENV === 'development') {
       // support headful dev mode when requested
       const headful = !!req.body.headful;
       const launchOpts = {
-        headless: !headful,
-        devtools: headful,
-        slowMo: headful ? 50 : 0,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized', '--window-size=1280,800']
-      };
+      headless: !headful,
+      // Do not open DevTools automatically for headful sessions — user will interact
+      // with the visible browser window. Keep slowMo 0 for responsiveness.
+      devtools: false,
+      slowMo: 0,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized', '--window-size=1280,800']
+    };
       const browser = await puppeteer.launch(launchOpts);
       const page = await browser.newPage();
       page.setDefaultTimeout(TIMEOUT);
@@ -424,8 +426,9 @@ router.post('/start', async (req, res) => {
     const headful = !!req.body.headful;
     const launchOpts = {
       headless: !headful,
-      devtools: headful,
-      slowMo: headful ? 50 : 0,
+      // Keep DevTools closed for user-facing headful sessions and keep interactions responsive
+      devtools: false,
+      slowMo: 0,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized', '--window-size=1280,800']
     };
     // If an external Chrome/Chromium is available (or you prefer puppeteer-core), set PUPPETEER_EXECUTABLE_PATH
@@ -577,8 +580,9 @@ router.post('/open-headful', async (req, res) => {
   try {
     const launchOpts = {
       headless: false,
-      devtools: true,
-      slowMo: 50,
+      // Do not open DevTools; keep the browser responsive for manual login
+      devtools: false,
+      slowMo: 0,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized', '--window-size=1280,800']
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -588,6 +592,42 @@ router.post('/open-headful', async (req, res) => {
     sessions.set(sessionId, { browser, page, createdAt: Date.now(), userId });
     await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2' }).catch(() => {});
     const ws = browser.wsEndpoint ? browser.wsEndpoint() : undefined;
+
+    // Start a background watcher that waits for session cookies and saves them
+    // as soon as they appear (so the visible browser can be closed automatically).
+    (async () => {
+      try {
+        const cookies = await waitForSessionCookies(page, 10 * 60 * 1000, 1000); // wait up to 10 minutes
+        const names = (cookies || []).map(c => c.name);
+        const hasSession = names.includes('c_user') && names.includes('xs');
+        if (!hasSession) {
+          // nothing to do
+          return;
+        }
+
+        const filename = `${userId}_${Date.now()}.json`;
+        const filepath = path.join(COOKIES_DIR, filename);
+        try { fs.writeFileSync(filepath, JSON.stringify(cookies, null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file (open-headful watcher):', e); }
+
+        let encrypted;
+        try { encrypted = encryptJSON(cookies); } catch (e) { console.error('encrypt failed (open-headful watcher)', e); }
+
+        if (process.env.MONGODB_URI && mongoose.connection.readyState === 1) {
+          try {
+            await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath, facebookConnected: true, facebookConnectedAt: new Date() });
+          } catch (dbErr) {
+            console.error('Failed to update user in DB (open-headful watcher):', dbErr && dbErr.message ? dbErr.message : dbErr);
+          }
+        }
+
+        try { await browser.close(); } catch (e) { /* ignore */ }
+        sessions.delete(sessionId);
+        console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId}`);
+      } catch (e) {
+        console.warn('open-headful watcher error', e && e.message ? e.message : e);
+      }
+    })();
+
     return res.json({ status: 'ok', message: 'Headful browser opened. Please complete login manually in the opened window.', sessionId, wsEndpoint: ws });
   } catch (err) {
     console.error('open-headful error', err);
