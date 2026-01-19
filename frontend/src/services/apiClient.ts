@@ -104,6 +104,8 @@ class ApiClient {
   }
 
   setToken(token: string | null): void {
+    // Avoid re-dispatching the token-set event if the token hasn't changed
+    if (this.token === token) return;
     this.token = token;
     if (token) {
       localStorage.setItem('access_token', token);

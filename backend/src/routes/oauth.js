@@ -95,7 +95,16 @@ router.delete('/disconnect/:platform', authenticateToken, async (req, res) => {
       await user.save();
       return res.json({ message: 'Facebook account disconnected' });
     }
-    
+
+    // Facebook Analysis disconnect: remove cookies and related fields
+    if (platform === 'facebook-analysis') {
+      user.facebookCookiesEncrypted = null;
+      user.facebookCookiesPath = null;
+      // Optionally, you can add a flag or timestamp if you want to track analysis connection
+      await user.save();
+      return res.json({ message: 'Facebook analysis disconnected' });
+    }
+
     res.status(400).json({ message: 'Invalid platform' });
   } catch (err) {
     console.error('Error disconnecting account:', err);

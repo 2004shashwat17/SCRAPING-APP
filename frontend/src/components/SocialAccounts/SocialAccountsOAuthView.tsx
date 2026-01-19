@@ -11,6 +11,12 @@ import {
   Chip,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
@@ -30,6 +36,10 @@ const SocialAccountsOAuthView: React.FC = () => {
   const [facebookConnectedLocal, setFacebookConnectedLocal] = useState<boolean>(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  // Modal + consent state for starting Facebook analysis
+  const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
+  const [analysisConsentChecked, setAnalysisConsentChecked] = useState(false);
+  const [analysisStarting, setAnalysisStarting] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -443,7 +453,7 @@ const SocialAccountsOAuthView: React.FC = () => {
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     {(facebookConnectedLocal || currentUser?.facebookConnected)
                       ? 'Connected — cookies saved'
-                      : 'Not enabled. Use the button to save cookies for analysis.'}
+                      : 'Not enabled. Start personalized sentiment and behavioral analysis on selected Facebook data.'}
                   </Typography>
                   {(facebookConnectedLocal || currentUser?.facebookConnected) && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -451,27 +461,77 @@ const SocialAccountsOAuthView: React.FC = () => {
                     </Typography>
                   )}
                 </Box>
-
                 <Box>
                   {(facebookConnectedLocal || currentUser?.facebookConnected) ? (
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <Chip label="Connected" color="success" icon={<CheckCircle />} />
                       <Button variant="outlined" size="small" onClick={() => loadAccounts()} startIcon={<Refresh />}>Refresh</Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => handleDisconnect('facebook-analysis')}
+                        startIcon={<Delete />}
+                        disabled={disconnecting === 'facebook-analysis'}
+                      >
+                        {disconnecting === 'facebook-analysis' ? <CircularProgress size={20} /> : 'Disconnect'}
+                      </Button>
                     </Box>
                   ) : (
-                    <Button variant="contained" onClick={() => openHeadfulBrowser()}>
-                      Enable Facebook Analysis
-                    </Button>
+                    <>
+                      <Button variant="contained" onClick={() => setAnalysisModalOpen(true)}>
+                        Enable Facebook Analysis
+                      </Button>
+                      {/* Confirmation modal to start headful browser analysis */}
+                      <Dialog open={analysisModalOpen} onClose={() => { setAnalysisModalOpen(false); setAnalysisConsentChecked(false); }}>
+                        <DialogTitle>Start Facebook Analysis</DialogTitle>
+                        <DialogContent>
+                          <Typography variant="body1" sx={{ mb: 1 }}>
+                            This will run a one-time automated analysis using your active Facebook session.
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            No background access is maintained after completion.
+                          </Typography>
+                          <FormControlLabel
+                            control={(
+                              <Checkbox
+                                checked={analysisConsentChecked}
+                                onChange={(e) => setAnalysisConsentChecked(e.target.checked)}
+                              />
+                            )}
+                            label="I understand and want to continue"
+                          />
+                        </DialogContent>
+                        <DialogActions>
+                          <Button onClick={() => { setAnalysisModalOpen(false); setAnalysisConsentChecked(false); }} disabled={analysisStarting}>Cancel</Button>
+                          <Button
+                            variant="contained"
+                            onClick={async () => {
+                              // Start analysis and open headful browser
+                              setAnalysisStarting(true);
+                              setAnalysisModalOpen(false);
+                              try {
+                                await openHeadfulBrowser();
+                              } finally {
+                                setAnalysisStarting(false);
+                                setAnalysisConsentChecked(false);
+                              }
+                            }}
+                            disabled={!analysisConsentChecked || analysisStarting}
+                          >
+                            {analysisStarting ? 'Starting…' : 'Start Analysis'}
+                          </Button>
+                        </DialogActions>
+                      </Dialog>
+                    </>
                   )}
                 </Box>
               </Box>
             </CardContent>
           </Card>
         )}
-      </Box>
-
-      {/* Note removed as requested */}
-      {/* Modal removed: headful browser opens directly when user clicks the Enable button */}
+  </Box>
+      {/* Note: confirmation modal will open when the user clicks "Enable Facebook Analysis" */}
     </Box>
   );
 };
