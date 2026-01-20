@@ -22,7 +22,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /opt/render/project/src/backend
 
 COPY package*.json ./
-RUN npm ci --production
+# Use npm install here because `npm ci` requires a lockfile (package-lock.json).
+# Some CI/build environments (like Railway) may not have a lockfile committed —
+# `npm install` is more robust in that case.
+RUN npm install --production
 
 COPY . .
 
