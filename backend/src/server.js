@@ -6,7 +6,22 @@ const cors = require('cors');
 
 
 const app = express();
-// Configure CORS: prefer explicit FRONTEND_URL from env in production
+
+// --- Ensure minimal manual CORS/preflight handling (fallback) ---
+// This guarantees we always respond to OPTIONS preflight with the appropriate
+// headers even if other middleware or route mounting fails.
+app.use((req, res, next) => {
+  const frontendOrigin = process.env.FRONTEND_URL || process.env.FRONTEND || req.headers.origin || '*';
+  const origin = frontendOrigin === '*' ? '*' : frontendOrigin;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Also enable the standard CORS middleware (configured similarly)
 const frontendOrigin = process.env.FRONTEND_URL || process.env.FRONTEND || '*';
 const corsOptions = {
   origin: frontendOrigin === '*' ? true : frontendOrigin,
@@ -15,11 +30,16 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
 };
-
-app.use(cors(corsOptions));
-// Ensure OPTIONS preflight requests are handled
-app.options('*', cors(corsOptions));
+app.use(require('cors')(corsOptions));
 app.use(express.json());
+
+// Global process-level error handlers (log uncaught exceptions / rejections)
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err && (err.stack || err.message || err));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason && (reason.stack || reason));
+});
 
 // Debug: log all requests and their bodies
 app.use((req, res, next) => {
@@ -54,6 +74,17 @@ if (!MONGODB_URI) {
 // Routes
 app.get('/', (req, res) => {
   res.status(200).send('OK');
+});
+
+// Lightweight debug endpoint to verify the process / environment at runtime
+app.get('/api/debug/status', (req, res) => {
+  res.json({
+    status: 'ok',
+    pid: process.pid,
+    uptime: process.uptime(),
+    envPort: process.env.PORT || null,
+    nodeVersion: process.version,
+  });
 });
 
 // Auth routes
