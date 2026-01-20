@@ -4,6 +4,7 @@ FROM node:20-bullseye
 RUN apt-get update && apt-get install -y \
   ca-certificates \
   fonts-liberation \
+  xvfb \
   libasound2 \
   libatk-bridge2.0-0 \
   libatk1.0-0 \
@@ -33,4 +34,6 @@ COPY . .
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 EXPOSE 5001
-CMD ["npm", "start"]
+# Run the app under Xvfb so Puppeteer's headful mode can start in containerized environments
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+CMD ["bash", "-lc", "xvfb-run --server-args='-screen 0 1280x720x24' npm start"]
