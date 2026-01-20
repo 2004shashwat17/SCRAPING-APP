@@ -1,11 +1,24 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+
 const cors = require('cors');
 
 
 const app = express();
-app.use(cors());
+// Configure CORS: prefer explicit FRONTEND_URL from env in production
+const frontendOrigin = process.env.FRONTEND_URL || process.env.FRONTEND || '*';
+const corsOptions = {
+  origin: frontendOrigin === '*' ? true : frontendOrigin,
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+// Ensure OPTIONS preflight requests are handled
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // Debug: log all requests and their bodies
