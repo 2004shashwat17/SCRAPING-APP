@@ -479,7 +479,15 @@ const SocialAccountsOAuthView: React.FC = () => {
                     </Box>
                   ) : (
                     <>
-                      <Button variant="contained" onClick={() => setAnalysisModalOpen(true)}>
+                      <Button
+                        variant="contained"
+                        onClick={(e) => {
+                          // remove focus from the triggering element before opening the modal
+                          // to avoid `aria-hidden` focus warnings (focused element must not be hidden)
+                          try { (e.currentTarget as HTMLElement).blur(); } catch (err) { /* ignore */ }
+                          setAnalysisModalOpen(true);
+                        }}
+                      >
                         Enable Facebook Analysis
                       </Button>
                       {/* Confirmation modal to start headful browser analysis */}

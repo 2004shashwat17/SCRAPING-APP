@@ -786,6 +786,26 @@ router.post('/open-headful', async (req, res) => {
   }
 });
 
+  // GET /api/facebook/session-screenshot/:sessionId
+  // Returns a PNG screenshot of the current Puppeteer page for the given sessionId.
+  router.get('/session-screenshot/:sessionId', async (req, res) => {
+    try {
+      const { sessionId } = req.params || {};
+      if (!sessionId) return res.status(400).json({ error: 'Missing sessionId param' });
+      const session = sessions.get(sessionId);
+      if (!session) return res.status(410).json({ error: 'Session not found or expired' });
+      const { page } = session;
+      if (!page) return res.status(500).json({ error: 'No page available for session' });
+      const buffer = await page.screenshot({ type: 'png', fullPage: false }).catch(err => { throw err; });
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.send(buffer);
+    } catch (err) {
+      console.error('session-screenshot error', err && (err.stack || err.message || err));
+      return res.status(500).json({ error: 'Failed to capture screenshot', details: err && (err.message || String(err)) });
+    }
+  });
+
 // WebSocket proxy endpoint so the browser DevTools can connect to the launched Chromium instance.
 // Client should open a WebSocket to wss://<host>/api/facebook/ws/<sessionId> and include Authorization header.
 // The server will validate the JWT in Authorization and then forward messages between the client and

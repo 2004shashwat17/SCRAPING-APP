@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Typography, CircularProgress, FormControlLabel, Checkbox, Alert } from '@mui/material';
-import apiClient from '../../services/apiClient';
+import apiClient, { getApiBaseUrl } from '../../services/apiClient';
 
 type Props = {
   open: boolean;
@@ -18,6 +18,9 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
   const [sessionId, setSessionId] = useState('');
   const [stage, setStage] = useState<'form'|'2fa'|'pending'|'success'|'error'|'headful'>('form');
   const [message, setMessage] = useState('');
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const prevObjectUrlRef = useRef<string | null>(null);
 
   const start = async () => {
     setStage('pending'); setMessage('Starting login...');
@@ -104,6 +107,9 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
     try {
       await apiClient.delete(`/api/facebook/session/${sessionId}`);
       setStage('form'); setSessionId(''); setMessage('Session closed');
+      // stop polling when closed
+      if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+      if (prevObjectUrlRef.current) { URL.revokeObjectURL(prevObjectUrlRef.current); prevObjectUrlRef.current = null; setScreenshotUrl(null); }
     } catch (err: any) { setMessage(err?.response?.data?.error || err.message || 'Failed to close session'); }
   };
 
@@ -142,6 +148,49 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
   };
 
   // browser popup removed; no ws copy helper needed
+
+  // Poll for screenshots when in headful stage
+  useEffect(() => {
+    // start polling when entering headful stage with a sessionId
+    if (stage === 'headful' && sessionId) {
+      const fetchScreenshot = async () => {
+        try {
+          const base = getApiBaseUrl().replace(/\/$/, '').replace(/\/api(\/v1)?$/, '');
+          const token = localStorage.getItem('access_token');
+          const url = `${base}/api/facebook/session-screenshot/${encodeURIComponent(sessionId)}`;
+          const headers: Record<string,string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          const resp = await fetch(url, { headers, cache: 'no-store' });
+          if (!resp.ok) return; // ignore transient
+          const blob = await resp.blob();
+          const obj = URL.createObjectURL(blob);
+          // revoke previous
+          if (prevObjectUrlRef.current) {
+            try { URL.revokeObjectURL(prevObjectUrlRef.current); } catch (e) { /* ignore */ }
+          }
+          prevObjectUrlRef.current = obj;
+          setScreenshotUrl(obj);
+        } catch (e) {
+          // ignore transient errors while polling
+        }
+      };
+      // immediate fetch + interval
+      fetchScreenshot();
+      pollRef.current = window.setInterval(fetchScreenshot, 1000);
+      return () => {
+        if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+        if (prevObjectUrlRef.current) { try { URL.revokeObjectURL(prevObjectUrlRef.current); } catch (e) {} prevObjectUrlRef.current = null; }
+        setScreenshotUrl(null);
+      };
+    }
+    // if leaving headful stage, cleanup
+    if (stage !== 'headful') {
+      if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+      if (prevObjectUrlRef.current) { try { URL.revokeObjectURL(prevObjectUrlRef.current); } catch (e) {} prevObjectUrlRef.current = null; }
+      setScreenshotUrl(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, sessionId]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -188,6 +237,20 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
               <Button variant="text" color="error" onClick={closeSession}>Close Session</Button>
             </Box>
             <Typography variant="caption">Tip: If the DevTools front-end link fails, paste the Inspect URL into chrome://inspect → Configure…</Typography>
+            {screenshotUrl ? (
+              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2">Live screenshot (updates every second):</Typography>
+                <Box sx={{ border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1, overflow: 'hidden', maxWidth: '100%' }}>
+                  <img src={screenshotUrl} alt="fb-screenshot" style={{ display: 'block', width: '100%', height: 'auto' }} />
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button size="small" onClick={() => { if (screenshotUrl) window.open(screenshotUrl); }}>Open image in new tab</Button>
+                  <Button size="small" onClick={() => { if (screenshotUrl) { const a = document.createElement('a'); a.href = screenshotUrl; a.download = `screenshot_${sessionId}.png`; document.body.appendChild(a); a.click(); a.remove(); } }}>Download</Button>
+                </Box>
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">Waiting for screenshot...</Typography>
+            )}
           </Box>
         )}
 
