@@ -10,6 +10,8 @@ const { authenticateToken } = require('./_auth_helper');
 const User = require('../models/User');
 
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const WebSocket = require('ws');
 
 const sessions = new Map();
 // Tracks sessions whose cookies have been saved so frontend can detect success
@@ -57,6 +59,27 @@ async function waitForSessionCookies(page, timeoutMs = Math.max(TIMEOUT, 30000),
 
 // simple sleep helper
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Clean up a session: close browser, kill Xvfb if started, and remove from map
+async function cleanupSession(sessionId) {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  try {
+    if (s.browser) {
+      await s.browser.close();
+    }
+  } catch (e) {
+    console.warn('cleanupSession: browser.close failed', e && (e.message || e));
+  }
+  try {
+    if (s.xvfbProc) {
+      try { s.xvfbProc.kill(); } catch (e) { /* ignore */ }
+    }
+  } catch (e) {
+    console.warn('cleanupSession: xvfb kill failed', e && (e.message || e));
+  }
+  sessions.delete(sessionId);
+}
 
 // Save cookies only if they include the required session cookies (c_user & xs),
 // unless `force` is true. Returns { saved: boolean, filepath?: string }
@@ -108,9 +131,6 @@ const TWO_FA_SELECTORS = [
   'input[aria-label*="code"]',
   'input[placeholder*="Code"]',
   'input[type="tel"]',
-  'input[data-testid="approvals_code_input"]',
-  // the complex selector reported by user (some FB flows render inputs deep in nested divs)
-  '#mount_0_0_Mn > div > div:nth-child(1) > div > div.x9f619.x1n2onr6.x1ja2u2z > div > div > div.x78zum5.xdt5ytf.x1t2pt76.x1n2onr6.x1ja2u2z.x10cihs4 > div.x9f619.x1n2onr6.x1ja2u2z.__fb-light-mode > div > div > div.x78zum5.x1iyjqo2.xylbxtu.xeuugli.x1n2onr6.xornbnt.xdt5ytf > div > div > div > div:nth-child(1) > div > div'
 ];
 
 // CAPTCHA selector hints (reCAPTCHA iframes, common captcha containers)
@@ -273,7 +293,7 @@ if (process.env.NODE_ENV === 'development') {
         try { await page.type(codeSel, code, { delay: 50 }); } catch (ee) { console.warn('typing into 2FA field failed', ee); }
       }
       const btnSel = await findSelector(page, CHECKPOINT_BUTTON_SELECTORS, 1500);
-      const captchaSel = await findSelector(page, CAPTCHA_SELECTORS, 1500);
+      await sessions.delete(sessionId);
       if (captchaSel) {
         // user must complete captcha in UI
         try {
@@ -332,8 +352,7 @@ if (process.env.NODE_ENV === 'development') {
       return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath });
     } catch (err) {
       console.error('dev-submit-2fa error', err);
-      try { await browser.close(); } catch (_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.status(500).json({ error: 'Dev submit 2FA failed', details: err.message });
     }
   });
@@ -417,8 +436,7 @@ if (process.env.NODE_ENV === 'development') {
 
       const saved = await saveCookiesSafely(sessionId, userId, cookies, false);
       if (!saved.saved) {
-        try { await browser.close(); } catch (_) {}
-        sessions.delete(sessionId);
+        await cleanupSession(sessionId);
         return res.json({ status: 'no_session', message: 'Session cookies not present', cookies, retryAfterMs: 3000 });
       }
       const filepath = saved.filepath;
@@ -426,8 +444,7 @@ if (process.env.NODE_ENV === 'development') {
       // encryption handled inside saveCookiesSafely already
 
       if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
-        try { await browser.close(); } catch (_) {}
-        sessions.delete(sessionId);
+        await cleanupSession(sessionId);
         return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
       }
 
@@ -440,8 +457,7 @@ if (process.env.NODE_ENV === 'development') {
         return res.json({ status: 'ok', message: 'Cookies saved to file but failed to update DB', filepath, dbError: dbErr.message || String(dbErr) });
       }
 
-      try { await browser.close(); } catch (_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath });
     } catch (err) {
       console.error('dev-check-session error', err);
@@ -483,6 +499,9 @@ router.post('/start', async (req, res) => {
     browser = await puppeteer.launch(launchOpts);
     const page = await browser.newPage();
     page.setDefaultTimeout(TIMEOUT);
+    // Attach Xvfb process handle if one was started (so watcher can clean up)
+    const sessionXvfb = typeof xvfb !== 'undefined' ? xvfb : null;
+    sessions.set(sessionId, { browser, page, createdAt: Date.now(), userId, xvfbProc: sessionXvfb });
 
     sessions.set(sessionId, { browser, page, createdAt: Date.now(), userId });
 
@@ -496,8 +515,7 @@ router.post('/start', async (req, res) => {
         await page.screenshot({ path: path.join(COOKIES_DIR, snapName), fullPage: true });
         await fs.promises.writeFile(path.join(COOKIES_DIR, htmlName), await page.content(), { encoding: 'utf8', mode: 0o600 });
       } catch (e) { console.warn('failed to save no_email debug artifacts', e); }
-      if (browser) try { await browser.close(); } catch (_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.status(500).json({ error: 'No element found for selector: #email', details: 'Login page did not show an email input', url: page.url(), screenshot: path.join(COOKIES_DIR, snapName), html: path.join(COOKIES_DIR, htmlName) });
     }
     await page.type(emailSel, fbEmail, { delay: 50 });
@@ -510,8 +528,7 @@ router.post('/start', async (req, res) => {
         await page.screenshot({ path: path.join(COOKIES_DIR, snapName), fullPage: true });
         await fs.promises.writeFile(path.join(COOKIES_DIR, htmlName), await page.content(), { encoding: 'utf8', mode: 0o600 });
       } catch (e) { console.warn('failed to save no_pass debug artifacts', e); }
-      if (browser) try { await browser.close(); } catch (_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.status(500).json({ error: 'No element found for selector: #pass', details: 'Login page did not show a password input', url: page.url(), screenshot: path.join(COOKIES_DIR, snapName), html: path.join(COOKIES_DIR, htmlName) });
     }
     await page.type(passSel, fbPassword, { delay: 50 });
@@ -585,8 +602,7 @@ router.post('/start', async (req, res) => {
     // If MongoDB is not connected, skip DB write but keep file
     if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
       console.warn('MongoDB not configured or not connected — skipping DB update (cookies saved to file only)');
-      try { await browser.close(); } catch(_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
     }
 
@@ -595,19 +611,16 @@ router.post('/start', async (req, res) => {
       await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
     } catch (dbErr) {
       console.error('Failed to update user in DB:', dbErr.message || dbErr);
-      try { await browser.close(); } catch(_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.json({ status: 'ok', message: 'Cookies saved to file but failed to update DB', filepath, dbError: dbErr.message || String(dbErr) });
     }
 
-    await browser.close();
-    sessions.delete(sessionId);
+    await cleanupSession(sessionId);
 
     return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath });
   } catch (err) {
     console.error('facebook/start error', err);
-    if (browser) try { await browser.close(); } catch (_) {}
-    sessions.delete(sessionId);
+    await cleanupSession(sessionId);
     return res.status(500).json({ error: 'Failed to capture cookies', details: err.message });
   }
 });
@@ -641,7 +654,42 @@ router.post('/open-headful', async (req, res) => {
       ]
     };
     if (process.env.PUPPETEER_EXECUTABLE_PATH) launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    browser = await puppeteer.launch(launchOpts);
+
+    // Try to launch headful browser. If it fails due to missing X server,
+    // attempt to start a local Xvfb and retry. As a last resort, fall back
+    // to headless mode so the endpoint remains usable in restrictive envs.
+    try {
+      browser = await puppeteer.launch(launchOpts);
+    } catch (err) {
+      console.warn('open-headful error on first launch', err && (err.message || err));
+      const msg = (err && err.message) || '';
+      if (msg.includes('Missing X server') || msg.includes('cannot open display') || msg.includes('No protocol specified')) {
+        console.log('Attempting to start Xvfb and retry Puppeteer launch...');
+        const { spawn } = require('child_process');
+        // Start Xvfb on display :99
+        const xvfb = spawn('Xvfb', [':99', '-screen', '0', '1280x720x24', '-ac'], { stdio: 'ignore' });
+        // Give Xvfb a moment to start
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        process.env.DISPLAY = ':99';
+        try {
+          browser = await puppeteer.launch(launchOpts);
+        } catch (err2) {
+          console.warn('Retry after starting Xvfb failed:', err2 && (err2.message || err2));
+          try { xvfb.kill(); } catch (e) {}
+          // Fallback: try headless mode to keep functionality
+          console.log('Falling back to headless mode for Puppeteer launch.');
+          launchOpts.headless = 'new';
+          try {
+            browser = await puppeteer.launch(launchOpts);
+          } catch (err3) {
+            console.error('Final Puppeteer launch attempt (headless) also failed:', err3 && (err3.stack || err3.message || err3));
+            throw err3;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
     const page = await browser.newPage();
     page.setDefaultTimeout(TIMEOUT);
     sessions.set(sessionId, { browser, page, createdAt: Date.now(), userId });
@@ -670,13 +718,11 @@ router.post('/open-headful', async (req, res) => {
               if (!savedNow.saved) {
                 // not a full session yet, keep waiting
               } else {
-                try { await browser.close(); } catch (e) { /* ignore */ }
-                sessions.delete(sessionId);
+                await cleanupSession(sessionId);
                 console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (cookies detected)`);
                 return;
               }
-              try { await browser.close(); } catch (e) { /* ignore */ }
-              sessions.delete(sessionId);
+              await cleanupSession(sessionId);
               console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (cookies detected)`);
               return;
             }
@@ -698,8 +744,7 @@ router.post('/open-headful', async (req, res) => {
                   if (!savedQuick.saved) {
                     // not a full session yet, continue waiting
                   } else {
-                    try { await browser.close(); } catch (e) { /* ignore */ }
-                    sessions.delete(sessionId);
+                    await cleanupSession(sessionId);
                     console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (profile URL detected, full session present)`);
                     return;
                   }
@@ -711,8 +756,7 @@ router.post('/open-headful', async (req, res) => {
                 const filepath = path.join(COOKIES_DIR, filename);
                 const savedQuick2 = await saveCookiesSafely(sessionId, userId, cookiesQuick || [], false);
                 if (savedQuick2.saved) {
-                  try { await browser.close(); } catch (e) { /* ignore */ }
-                  sessions.delete(sessionId);
+                  await cleanupSession(sessionId);
                   console.log(`facebookCapture: open-headful watcher saved cookies and closed session ${sessionId} (profile URL detected)`);
                   return;
                 }
@@ -724,8 +768,7 @@ router.post('/open-headful', async (req, res) => {
           await sleep(1000);
         }
         // timeout reached: do not keep browser open indefinitely
-        try { await browser.close(); } catch (e) { /* ignore */ }
-        sessions.delete(sessionId);
+        await cleanupSession(sessionId);
         console.log(`facebookCapture: open-headful watcher timeout, closed session ${sessionId}`);
       } catch (e) {
         console.warn('open-headful watcher error', e && e.message ? e.message : e);
@@ -739,6 +782,62 @@ router.post('/open-headful', async (req, res) => {
     sessions.delete(sessionId);
     return res.status(500).json({ error: 'Failed to open headful browser', details: err.message });
   }
+});
+
+// WebSocket proxy endpoint so the browser DevTools can connect to the launched Chromium instance.
+// Client should open a WebSocket to wss://<host>/api/facebook/ws/<sessionId> and include Authorization header.
+// The server will validate the JWT in Authorization and then forward messages between the client and
+// the Chromium DevTools WebSocket endpoint.
+router.ws('/ws/:sessionId', async function (clientWs, req) {
+  try {
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
+    // Support token via Authorization header or query param (?token=...)
+    let token = authHeader.split(' ')[1];
+    if (!token && req && req.query && req.query.token) token = req.query.token;
+    if (!token) return clientWs.close(1008, 'Missing auth token');
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (e) {
+      return clientWs.close(1008, 'Invalid token');
+    }
+    const sessionId = req.params.sessionId;
+    const session = sessions.get(sessionId);
+    if (!session) return clientWs.close(1008, 'Session not found');
+    if (session.userId !== decoded.userId) return clientWs.close(1008, 'Forbidden');
+
+    // Determine target DevTools websocket endpoint
+    const target = session.browser && session.browser.wsEndpoint ? session.browser.wsEndpoint() : session.wsEndpoint;
+    if (!target) return clientWs.close(1011, 'No browser endpoint available');
+
+    const proxied = new WebSocket(target);
+    proxied.on('open', () => {
+      // forward messages
+      proxied.on('message', (msg) => {
+        try { clientWs.send(msg); } catch (e) { /* ignore */ }
+      });
+      clientWs.on('message', (msg) => {
+        try { proxied.send(msg); } catch (e) { /* ignore */ }
+      });
+    });
+    proxied.on('close', () => { try { clientWs.close(); } catch (e) {} });
+    proxied.on('error', (err) => { console.error('ws proxy target error', err && (err.stack || err)); clientWs.close(1011, 'Proxy target error'); });
+    clientWs.on('close', () => { try { proxied.close(); } catch (e) {} });
+  } catch (e) {
+    console.error('ws proxy handler error', e && (e.stack || e.message || e));
+    try { clientWs.close(1011, 'Server error'); } catch (e) {}
+  }
+});
+
+// Return an inspection URL that clients can use to connect DevTools via the proxy
+router.get('/inspect/:sessionId', (req, res) => {
+  const sessionId = req.params.sessionId;
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const host = req.get('host');
+  // Use wss since the site is served over https in production
+  const wsUrl = `wss://${host}/api/facebook/ws/${sessionId}`;
+  return res.json({ wsUrl, note: 'Open Chrome > More Tools > Remote devices > Configure... and add this ws target, or use chrome://inspect to add the target.' });
 });
 
 // POST /api/facebook/submit-2fa
@@ -809,8 +908,7 @@ router.post('/submit-2fa', async (req, res) => {
     // If MongoDB is not connected, skip DB write but keep file
     if (!process.env.MONGODB_URI || mongoose.connection.readyState !== 1) {
       console.warn('MongoDB not configured or not connected — skipping DB update (cookies saved to file only)');
-      try { await browser.close(); } catch(_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.json({ status: 'ok', message: 'Cookies saved to file; MongoDB not configured so DB update skipped', filepath });
     }
 
@@ -819,19 +917,16 @@ router.post('/submit-2fa', async (req, res) => {
       await User.findByIdAndUpdate(userId, { facebookCookiesEncrypted: encrypted, facebookCookiesPath: filepath });
     } catch (dbErr) {
       console.error('Failed to update user in DB:', dbErr.message || dbErr);
-      try { await browser.close(); } catch(_) {}
-      sessions.delete(sessionId);
+      await cleanupSession(sessionId);
       return res.json({ status: 'ok', message: 'Cookies saved to file but failed to update DB', filepath, dbError: dbErr.message || String(dbErr) });
     }
 
-    await browser.close();
-    sessions.delete(sessionId);
+    await cleanupSession(sessionId);
 
     return res.json({ status: 'ok', message: 'Cookies captured and saved', filepath });
   } catch (err) {
     console.error('facebook/2fa error', err);
-    try { await browser.close(); } catch (_) {}
-    sessions.delete(sessionId);
+    await cleanupSession(sessionId);
     return res.status(500).json({ error: '2FA submission failed', details: err.message });
   }
 });

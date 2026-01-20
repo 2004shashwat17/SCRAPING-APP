@@ -6,6 +6,12 @@ const cors = require('cors');
 
 
 const app = express();
+// Enable WebSocket routes (used for proxying DevTools to a running Chromium instance)
+try {
+  require('express-ws')(app);
+} catch (e) {
+  console.warn('express-ws failed to initialize (WS routes may not work):', e && e.message);
+}
 
 // --- Ensure minimal manual CORS/preflight handling (fallback) ---
 // This guarantees we always respond to OPTIONS preflight with the appropriate

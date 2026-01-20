@@ -7,33 +7,11 @@
 // - In development, prefer a localhost backend (`http://localhost:5001`).
 //   If `API_BASE_URL` is set in localStorage and points to localhost/127.0.0.1, use that instead.
 // - In production, allow an explicit localStorage override or the `REACT_APP_BACKEND_URL` env var.
+// Final fallback deployed backend (used if no overrides present)
+const DEFAULT_DEPLOYED_BACKEND = 'https://scraping-app-production-abe3.up.railway.app';
 const getApiBaseUrl = () => {
-  // Development: prefer local backend to avoid accidentally calling deployed hosts
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      const overrideUrl = localStorage.getItem('API_BASE_URL');
-      if (overrideUrl && (overrideUrl.includes('localhost') || overrideUrl.includes('127.0.0.1'))) {
-        return overrideUrl;
-      }
-    } catch (e) {
-      // ignore any localStorage access errors
-    }
-    return 'http://localhost:5001';
-  }
-
-  // Non-development (production/staging): allow override via localStorage first
-  try {
-    const overrideUrl = localStorage.getItem('API_BASE_URL');
-    if (overrideUrl) return overrideUrl;
-  } catch (e) {
-    // ignore
-  }
-
-  if (process.env.REACT_APP_BACKEND_URL) {
-    return process.env.REACT_APP_BACKEND_URL;
-  }
-
-  throw new Error('REACT_APP_BACKEND_URL is not set in the environment variables.');
+  // Always use the deployed backend URL for all environments
+  return DEFAULT_DEPLOYED_BACKEND;
 };
 
 const API_BASE_URL = getApiBaseUrl();
