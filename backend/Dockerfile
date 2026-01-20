@@ -34,7 +34,7 @@ COPY . .
 # Use system Chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-EXPOSE 5001
+EXPOSE 8080
 # Run the app under Xvfb so Puppeteer's headful mode can start in containerized environments
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 CMD ["bash", "-lc", "xvfb-run --server-args='-screen 0 1280x720x24' npm start"]
