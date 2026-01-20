@@ -851,6 +851,72 @@ router.ws('/ws/:sessionId', async function (clientWs, req) {
   }
 });
 
+// POST /api/facebook/upload-cookies
+// Accepts cookies from the user's browser (array or raw string) and saves them using saveCookiesSafely.
+router.post('/upload-cookies', async (req, res) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(400).json({ error: 'Missing user context' });
+    let { cookies, cookieString } = req.body || {};
+
+    // If a cookieString was provided (document.cookie style or JSON text), try to parse it
+    if (!cookies && cookieString) {
+      // Try JSON first
+      try {
+        const parsed = JSON.parse(cookieString);
+        if (Array.isArray(parsed)) cookies = parsed;
+      } catch (e) {
+        // Not JSON — try simple name=value; parsing
+        const parts = cookieString.split(';').map(s => s.trim()).filter(Boolean);
+        cookies = parts.map(p => {
+          const eq = p.indexOf('=');
+          if (eq === -1) return null;
+          return { name: p.slice(0, eq).trim(), value: p.slice(eq + 1).trim(), domain: '.facebook.com', path: '/' };
+        }).filter(Boolean);
+      }
+    }
+
+    if (!Array.isArray(cookies) || cookies.length === 0) return res.status(400).json({ error: 'No cookies provided' });
+
+    // normalize cookie objects to shape expected by saveCookiesSafely: {name, value, domain, path, expires, httpOnly, secure}
+    const normalized = cookies.map((c) => {
+      if (!c) return null;
+      return {
+        name: c.name || c.key || c.N || '',
+        value: c.value || c.v || c.V || '',
+        domain: c.domain || c.Domain || '.facebook.com',
+        path: c.path || c.Path || '/',
+        expires: c.expires || c.expiry || null,
+        httpOnly: !!c.httpOnly || !!c.httpOnly === true || !!c.httpOnly === false ? !!c.httpOnly : !!c.http_only || !!c.httpOnly,
+        secure: !!c.secure,
+      };
+    }).filter(Boolean);
+
+    const names = normalized.map(c => c.name);
+    const hasSession = names.includes('c_user') && names.includes('xs');
+    if (!hasSession) {
+      return res.status(400).json({ status: 'no_session', message: 'Required session cookies (c_user & xs) not present', seen: names });
+    }
+
+    // create a sessionId for record keeping
+    const sessionId = uuidv4();
+    const saved = await saveCookiesSafely(sessionId, userId, normalized, false);
+    if (!saved || !saved.saved) return res.status(500).json({ error: 'Failed to save cookies' });
+
+    // Optionally mark the user connected in DB
+    try {
+      await User.findByIdAndUpdate(userId, { facebookConnected: true, facebookConnectedAt: Date.now() });
+    } catch (e) {
+      console.warn('upload-cookies: failed to mark user connected', e && e.message ? e.message : e);
+    }
+
+    return res.json({ status: 'ok', message: 'Cookies saved', filepath: saved.filepath, sessionId });
+  } catch (err) {
+    console.error('upload-cookies error', err && (err.stack || err.message || err));
+    return res.status(500).json({ error: 'Failed to upload cookies', details: err && (err.message || String(err)) });
+  }
+});
+
 // Create a short-lived inspect token for a session (returns a wss proxy URL with token)
 router.post('/inspect-token/:sessionId', authenticateToken, async (req, res) => {
   const userId = req.userId;

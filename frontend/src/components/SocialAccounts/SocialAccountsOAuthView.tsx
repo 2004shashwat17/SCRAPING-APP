@@ -23,6 +23,7 @@ import { Facebook, Refresh, Delete, CheckCircle } from '@mui/icons-material';
 import Avatar from '@mui/material/Avatar';
 import { apiClient, getApiBaseUrl } from '../../services/apiClient';
 // Removed modal import — opening headful browser directly instead
+import CookieImportModal from './CookieImportModal';
 import type { SocialAccount, OAuthAccountsResponse } from '../../types/api';
 
 const SocialAccountsOAuthView: React.FC = () => {
@@ -38,6 +39,7 @@ const SocialAccountsOAuthView: React.FC = () => {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   // Modal + consent state for starting Facebook analysis
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
+  const [cookieImportOpen, setCookieImportOpen] = useState(false);
   const [analysisConsentChecked, setAnalysisConsentChecked] = useState(false);
   const [analysisStarting, setAnalysisStarting] = useState(false);
   const [searchParams] = useSearchParams();
@@ -482,55 +484,14 @@ const SocialAccountsOAuthView: React.FC = () => {
                       <Button
                         variant="contained"
                         onClick={(e) => {
-                          // remove focus from the triggering element before opening the modal
-                          // to avoid `aria-hidden` focus warnings (focused element must not be hidden)
                           try { (e.currentTarget as HTMLElement).blur(); } catch (err) { /* ignore */ }
-                          setAnalysisModalOpen(true);
+                          // Open the cookie import modal instead of server-side headful flow
+                          setCookieImportOpen(true);
                         }}
                       >
                         Enable Facebook Analysis
                       </Button>
-                      {/* Confirmation modal to start headful browser analysis */}
-                      <Dialog open={analysisModalOpen} onClose={() => { setAnalysisModalOpen(false); setAnalysisConsentChecked(false); }}>
-                        <DialogTitle>Start Facebook Analysis</DialogTitle>
-                        <DialogContent>
-                          <Typography variant="body1" sx={{ mb: 1 }}>
-                            This will run a one-time automated analysis using your active Facebook session.
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                            No background access is maintained after completion.
-                          </Typography>
-                          <FormControlLabel
-                            control={(
-                              <Checkbox
-                                checked={analysisConsentChecked}
-                                onChange={(e) => setAnalysisConsentChecked(e.target.checked)}
-                              />
-                            )}
-                            label="I understand and want to continue"
-                          />
-                        </DialogContent>
-                        <DialogActions>
-                          <Button onClick={() => { setAnalysisModalOpen(false); setAnalysisConsentChecked(false); }} disabled={analysisStarting}>Cancel</Button>
-                          <Button
-                            variant="contained"
-                            onClick={async () => {
-                              // Start analysis and open headful browser
-                              setAnalysisStarting(true);
-                              setAnalysisModalOpen(false);
-                              try {
-                                await openHeadfulBrowser();
-                              } finally {
-                                setAnalysisStarting(false);
-                                setAnalysisConsentChecked(false);
-                              }
-                            }}
-                            disabled={!analysisConsentChecked || analysisStarting}
-                          >
-                            {analysisStarting ? 'Starting…' : 'Start Analysis'}
-                          </Button>
-                        </DialogActions>
-                      </Dialog>
+                      <CookieImportModal open={cookieImportOpen} onClose={() => setCookieImportOpen(false)} onSaved={() => { loadAccounts().catch(()=>{}); setSuccessMessage('Facebook cookies saved'); setTimeout(()=>setSuccessMessage(null),5000); }} />
                     </>
                   )}
                 </Box>

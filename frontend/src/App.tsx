@@ -21,6 +21,7 @@ import Navbar from './components/Layout/Navbar';
 import StatisticsPage from './pages/StatisticsPage';
 import EngagementPage from './pages/EngagementPage';
 import ClustersPage from './pages/ClustersPage';
+import FacebookSessionViewer from './pages/FacebookSessionViewer';
 
 // OAuth Callback Handler Component
 const OAuthCallbackHandler: React.FC = () => {
@@ -175,6 +176,7 @@ const AuthenticatedApp: React.FC = () => {
               <Route path="/statistics" element={<StatisticsPage />} />
               <Route path="/engagement" element={<EngagementPage />} />
               <Route path="/clusters" element={<ClustersPage />} />
+              <Route path="/facebook/session-viewer" element={<FacebookSessionViewer />} />
               <Route path="/collection" element={<DataCollectionStatus />} />
               <Route path="/settings" element={<SettingsView />} />
               <Route path="/profile" element={<ProfileView />} />
