@@ -12,6 +12,8 @@ const User = require('../models/User');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const WebSocket = require('ws');
+const { spawn, execSync } = require('child_process');
+const crypto = require('crypto');
 
 const sessions = new Map();
 // Tracks sessions whose cookies have been saved so frontend can detect success
@@ -826,6 +828,77 @@ router.ws('/ws/:sessionId', async function (clientWs, req) {
   } catch (e) {
     console.error('ws proxy handler error', e && (e.stack || e.message || e));
     try { clientWs.close(1011, 'Server error'); } catch (e) {}
+  }
+});
+
+// Create a short-lived inspect token for a session (returns a wss proxy URL with token)
+router.post('/inspect-token/:sessionId', authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  const sessionId = req.params.sessionId;
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const token = require('jsonwebtoken').sign({ sessionId, userId }, process.env.JWT_SECRET, { expiresIn: '5m' });
+    const host = req.get('host');
+    const wsUrl = `wss://${host}/api/facebook/ws/${sessionId}?token=${encodeURIComponent(token)}`;
+    return res.json({ wsUrl, expiresIn: 300 });
+  } catch (e) {
+    console.error('inspect-token error', e && (e.stack || e.message || e));
+    return res.status(500).json({ error: 'Failed to create inspect token' });
+  }
+});
+
+// POST /api/facebook/vnc-token
+// Generates a short-lived VNC password, restarts x11vnc to apply it, and
+// returns the noVNC URL + password (expires in 5 minutes).
+router.post('/vnc-token', authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  try {
+    const password = crypto.randomBytes(8).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+    const authFile = '/tmp/vnc_passwd';
+    // Store the password into x11vnc auth file
+    try {
+      // x11vnc -storepasswd <pw> <file>
+      execSync(`x11vnc -storepasswd ${password} ${authFile}`);
+    } catch (e) {
+      console.error('Failed to create vnc passwd file', e && (e.message || e));
+      return res.status(500).json({ error: 'Failed to create VNC password' });
+    }
+
+    // Restart x11vnc to pick up new password
+    try {
+      execSync('pkill x11vnc || true');
+      // Start in background
+      spawn('x11vnc', ['-display', ':99', '-rfbauth', authFile, '-forever', '-shared', '-rfbport', '5900'], { detached: true, stdio: 'ignore' }).unref();
+    } catch (e) {
+      console.error('Failed to restart x11vnc', e && (e.message || e));
+      // still return URL but note error
+    }
+
+    const host = req.get('host');
+    const url = `https://${host}/vnc.html`;
+    // Note: noVNC is served at /vnc.html by websockify (noVNC's default path)
+    return res.json({ url, password, expiresIn: 300 });
+  } catch (e) {
+    console.error('vnc-token error', e && (e.stack || e.message || e));
+    return res.status(500).json({ error: 'Failed to generate VNC token' });
+  }
+});
+
+// Close a running session and clean up resources (browser + Xvfb)
+router.delete('/session/:sessionId', authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  const sessionId = req.params.sessionId;
+  const session = sessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await cleanupSession(sessionId);
+    return res.json({ status: 'ok', message: 'Session closed' });
+  } catch (e) {
+    console.error('session close error', e && (e.stack || e.message || e));
+    return res.status(500).json({ error: 'Failed to close session' });
   }
 });
 

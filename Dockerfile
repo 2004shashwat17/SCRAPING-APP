@@ -6,6 +6,10 @@ RUN apt-get update && apt-get install -y \
   fonts-liberation \
   xvfb \
   xauth \
+  x11vnc \
+  python3 \
+  python3-pip \
+  git \
   libasound2 \
   libatk-bridge2.0-0 \
   libatk1.0-0 \
@@ -37,7 +41,15 @@ COPY backend/ .
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PORT=8080
 
-EXPOSE 8080
+# Install noVNC and websockify
+RUN git clone --depth 1 https://github.com/novnc/noVNC /opt/noVNC \
+  && pip3 install websockify
 
-# Run Express under Xvfb
-CMD ["bash", "-lc", "xvfb-run --server-args='-screen 0 1280x720x24' npm start"]
+EXPOSE 8080 5900 6080
+
+# Copy startup script
+COPY backend/scripts/start.sh /usr/local/bin/start-backend.sh
+RUN chmod +x /usr/local/bin/start-backend.sh
+
+# Run our startup helper which starts Xvfb, x11vnc, websockify/noVNC and the node app
+CMD ["bash", "-lc", "/usr/local/bin/start-backend.sh"]

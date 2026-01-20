@@ -16,7 +16,7 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
   const [postDetectWait, setPostDetectWait] = useState<number>(10);
   const [postCaptchaWait, setPostCaptchaWait] = useState<number>(10);
   const [sessionId, setSessionId] = useState('');
-  const [stage, setStage] = useState<'form'|'2fa'|'pending'|'success'|'error'>('form');
+  const [stage, setStage] = useState<'form'|'2fa'|'pending'|'success'|'error'|'headful'>('form');
   const [message, setMessage] = useState('');
 
   const start = async () => {
@@ -37,8 +37,9 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
         resp = await apiClient.post('/api/facebook/open-headful', {});
         setMessage(resp.data?.message || 'Headful browser opened. Complete login manually.');
         if (onStatusChange) onStatusChange('pending');
-        // close the modal so the user can interact with the opened browser window
-        onClose();
+        // Keep modal open and show headful controls (inspect URL, open DevTools)
+        setSessionId(resp.data?.sessionId || '');
+        setStage('headful');
         return;
       } else {
         resp = await apiClient.post('/api/facebook/start', { fbEmail: email, fbPassword: password, headful });
@@ -68,6 +69,42 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
       }
       if (onStatusChange) onStatusChange('error');
     }
+  };
+
+  const openDevTools = async () => {
+    if (!sessionId) return setMessage('No session');
+    try {
+      const resp = await apiClient.post(`/api/facebook/inspect-token/${sessionId}`);
+      const wsUrl = resp.data?.wsUrl;
+      if (!wsUrl) return setMessage('Failed to get inspect URL');
+      // Attempt to open the hosted DevTools frontend with the ws target
+      const devtoolsUrl = `https://chrome-devtools-frontend.appspot.com/serve_file/@f/inspector.html?ws=${encodeURIComponent(wsUrl)}`;
+      // Open new window/tab
+      window.open(devtoolsUrl, '_blank');
+      // Also copy to clipboard for manual use
+      try { await navigator.clipboard.writeText(wsUrl); setMessage('Inspect URL copied to clipboard'); } catch (e) { /* ignore */ }
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || err.message || 'Failed to get inspect token');
+    }
+  };
+
+  const copyInspectUrl = async () => {
+    if (!sessionId) return setMessage('No session');
+    try {
+      const resp = await apiClient.post(`/api/facebook/inspect-token/${sessionId}`);
+      const wsUrl = resp.data?.wsUrl;
+      if (!wsUrl) return setMessage('Failed to get inspect URL');
+      await navigator.clipboard.writeText(wsUrl);
+      setMessage('Inspect URL copied to clipboard');
+    } catch (err: any) { setMessage(err?.response?.data?.error || err.message || 'Failed to get inspect token'); }
+  };
+
+  const closeSession = async () => {
+    if (!sessionId) return setMessage('No session');
+    try {
+      await apiClient.delete(`/api/facebook/session/${sessionId}`);
+      setStage('form'); setSessionId(''); setMessage('Session closed');
+    } catch (err: any) { setMessage(err?.response?.data?.error || err.message || 'Failed to close session'); }
   };
 
   const submit2fa = async (code: string) => {
@@ -139,6 +176,18 @@ export default function FacebookCaptureModal({ open, onClose, onStatusChange }: 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
             <CircularProgress size={20} />
             <Typography>{message}</Typography>
+          </Box>
+        )}
+
+        {stage === 'headful' && (
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography>Headful browser opened on the server. Use the buttons below to inspect or close the session.</Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="contained" onClick={openDevTools}>Open DevTools</Button>
+              <Button variant="outlined" onClick={copyInspectUrl}>Copy Inspect URL</Button>
+              <Button variant="text" color="error" onClick={closeSession}>Close Session</Button>
+            </Box>
+            <Typography variant="caption">Tip: If the DevTools front-end link fails, paste the Inspect URL into chrome://inspect → Configure…</Typography>
           </Box>
         )}
 
