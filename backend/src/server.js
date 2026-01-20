@@ -53,7 +53,7 @@ if (!MONGODB_URI) {
 
 // Routes
 app.get('/', (req, res) => {
-  res.send('API is running');
+  res.status(200).send('OK');
 });
 
 // Auth routes
@@ -98,6 +98,7 @@ app.use('/api/consent', consentRoutes);
 
 // TODO: Add posts, dashboard, settings routes
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('process.env.PORT:', process.env.PORT);
 });
