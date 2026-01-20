@@ -57,16 +57,28 @@ app.get('/', (req, res) => {
 });
 
 // Auth routes
-const authRoutes = require('./routes/auth');
-app.use('/api/auth', authRoutes);
+try {
+  const authRoutes = require('./routes/auth');
+  app.use('/api/auth', authRoutes);
+} catch (e) {
+  console.error('Failed to mount auth routes:', e && e.message);
+}
 
 // OAuth routes
-const oauthRoutes = require('./routes/oauth');
-app.use('/api/oauth', oauthRoutes);
+try {
+  const oauthRoutes = require('./routes/oauth');
+  app.use('/api/oauth', oauthRoutes);
+} catch (e) {
+  console.error('Failed to mount oauth routes:', e && e.message);
+}
 
 // Scraper routes
-const scraperRoutes = require('./routes/scraper');
-app.use('/api/scraper', scraperRoutes);
+try {
+  const scraperRoutes = require('./routes/scraper');
+  app.use('/api/scraper', scraperRoutes);
+} catch (e) {
+  console.error('Failed to mount scraper routes:', e && e.message);
+}
 
 // Cookie admin routes
 try {
