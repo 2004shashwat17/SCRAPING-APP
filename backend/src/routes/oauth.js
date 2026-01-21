@@ -100,7 +100,11 @@ router.delete('/disconnect/:platform', authenticateToken, async (req, res) => {
     if (platform === 'facebook-analysis') {
       user.facebookCookiesEncrypted = null;
       user.facebookCookiesPath = null;
-      // Optionally, you can add a flag or timestamp if you want to track analysis connection
+      // Clear connected flags so frontend reflects disconnected status
+      user.facebookConnected = false;
+      user.facebookConnectedAt = undefined;
+      // Optionally, clear other facebook metadata used for OAuth linking
+      // (do not remove facebookId or access token if you want to preserve the OAuth link)
       await user.save();
       return res.json({ message: 'Facebook analysis disconnected' });
     }
