@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, TextField, Checkbox, FormControlLabel, Alert } from '@mui/material';
+import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, TextField, Checkbox, FormControlLabel, Alert, Link } from '@mui/material';
 import apiClient from '../../services/apiClient';
 
 type Props = {
@@ -90,8 +90,8 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       setMessage('Submitting cookies...');
       try {
         const resp = await apiClient.post('/api/facebook/upload-cookies', { cookies: parsedCookies });
-        if (resp && resp.data && resp.data.status === 'ok') {
-          setMessage('Cookies saved — Facebook analysis enabled');
+          if (resp && resp.data && resp.data.status === 'ok') {
+            setMessage('Cookies saved and encrypted. They cannot be viewed or edited.');
           if (onSaved) onSaved();
           setTimeout(() => { setLoading(false); onClose(); }, 1200);
           return;
@@ -117,19 +117,34 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       <DialogContent>
         {step === 1 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography>You stay in control.</Typography>
+            <Typography sx={{ fontWeight: 600 }}>You stay in control.</Typography>
             <Typography color="text.secondary">We don’t access your Facebook account automatically and we never ask for your password.</Typography>
-            <Typography color="text.secondary">You can paste cookies you export yourself using a browser extension (like Cookie-Editor).</Typography>
+            <Typography color="text.secondary">You can paste cookies you export yourself using a browser extension (for example <Link href="https://chrome.google.com/webstore/search/cookie%20editor" target="_blank" rel="noopener noreferrer" underline="hover">Cookie Editor</Link>).</Typography>
+            <Typography color="text.secondary">No password is required — you remain in control of what you share.</Typography>
           </Box>
         )}
 
         {step === 2 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography>Open facebook.com and log in</Typography>
-            <Typography>Click your cookie extension</Typography>
-            <Typography>Choose Export → Copy to Clipboard</Typography>
-            <Typography>Come back here and paste it</Typography>
+            <Typography sx={{ fontWeight: 600 }}>Export Cookies from Facebook</Typography>
+            <Typography>1) Open <Link href="https://www.facebook.com" target="_blank" rel="noopener noreferrer" underline="hover">facebook.com</Link> and sign in.</Typography>
+            <Typography>2) Click your cookie extension in the browser toolbar.</Typography>
+            <Typography>3) Choose <strong>Export</strong> → <strong>Copy to Clipboard</strong>.</Typography>
+            <Typography>Recommended extensions:</Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column', pl: 1 }}>
+              <Link href="https://chrome.google.com/webstore/search/cookie%20editor" target="_blank" rel="noopener noreferrer" underline="hover" color="primary">Cookie Editor (Chrome Web Store)</Link>
+              <Link href="https://chrome.google.com/webstore/search/editthiscookie" target="_blank" rel="noopener noreferrer" underline="hover" color="primary">EditThisCookie (Chrome Web Store)</Link>
+            </Box>
             <Typography variant="caption" color="text.secondary">Cookies are sensitive. Treat them like a password.</Typography>
+
+            <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              <Box sx={{ width: 160, height: 120, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg, #fff, #fafafa)' }}>
+                <Typography variant="caption" color="text.secondary">Extension icon</Typography>
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography color="text.secondary">Tip: The extension icon appears near the address bar. Click it, then use Export → Copy. If you don't have an extension installed, open the links above to install one from the Chrome Web Store.</Typography>
+              </Box>
+            </Box>
           </Box>
         )}
 

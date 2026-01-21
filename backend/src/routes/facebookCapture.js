@@ -910,7 +910,8 @@ router.post('/upload-cookies', async (req, res) => {
       console.warn('upload-cookies: failed to mark user connected', e && e.message ? e.message : e);
     }
 
-    return res.json({ status: 'ok', message: 'Cookies saved', filepath: saved.filepath, sessionId });
+    // Do not return filepaths or cookie contents — only acknowledge success and sessionId.
+    return res.json({ status: 'ok', message: 'Cookies saved and encrypted', sessionId });
   } catch (err) {
     console.error('upload-cookies error', err && (err.stack || err.message || err));
     return res.status(500).json({ error: 'Failed to upload cookies', details: err && (err.message || String(err)) });
