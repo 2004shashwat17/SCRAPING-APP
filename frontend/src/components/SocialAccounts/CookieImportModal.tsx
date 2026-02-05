@@ -21,6 +21,9 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
     revoke: false,
     terms: false,
   });
+  const [masked, setMasked] = useState(false);
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
+  const [maskedPreview, setMaskedPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -30,6 +33,9 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       setMessage(null);
       setLoading(false);
       setChecked({ copied: false, temporary: false, expiry: false, revoke: false, terms: false });
+      setMasked(false);
+      setFingerprint(null);
+      setMaskedPreview(null);
     }
   }, [open]);
 
@@ -68,10 +74,79 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       // Check required cookies
       const names = normalized.map((c: any) => c.name);
       const ok = names.includes('c_user') && names.includes('xs');
-      if (ok) setMessage('✅ Facebook cookies detected');
-      else setMessage('Missing c_user and xs — cookies appear incomplete');
+      if (ok) {
+        setMessage('✅ Facebook cookies detected');
+      } else {
+        setMessage('Missing c_user and xs — cookies appear incomplete');
+      }
+      // compute a short fingerprint to show as an encrypted-like preview and mask content
+      const computeMask = async (text: string) => {
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(text || '');
+          const digest = await window.crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(digest));
+          const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+          const short = hashHex.slice(0, 16);
+          setFingerprint(short);
+          setMasked(true);
+          setMaskedPreview(`Encrypted cookies •••• ${short}`);
+        } catch (e) {
+          // fallback: show masked length
+          setMaskedPreview(`Encrypted cookies •••• (${(text||'').length} chars)`);
+          setMasked(true);
+        }
+      };
+      await computeMask(cookieText || '');
       setStep(4); // go to confirmation screen
     } catch (e: any) {
+      setMessage('Failed to parse cookies');
+    }
+  };
+
+  // Immediate paste handler: when user pastes into the textarea, capture clipboard text,
+  // parse, mask and validate immediately, and move to confirmation step.
+  const handlePaste = async (e: React.ClipboardEvent<any>) => {
+    e.preventDefault();
+    setMessage(null);
+    const pasted = e.clipboardData.getData('text') || '';
+    if (!pasted) {
+      // try navigator.clipboard as fallback
+      try { const fromClip = await (navigator.clipboard && navigator.clipboard.readText ? navigator.clipboard.readText() : ''); if (fromClip) {
+        setCookieText(fromClip);
+      } } catch (err) { /* ignore */ }
+      return;
+    }
+    setCookieText(pasted);
+    try {
+      const parsed = parseCookieText(pasted || '');
+      if (!parsed || parsed.length === 0) {
+        setMessage('No cookies found in pasted data');
+        return;
+      }
+      const normalized = parsed.map((c: any) => ({ name: c.name || c.key || Object.keys(c)[0], value: c.value || c.value || (c.V || ''), domain: c.domain || c.domain || '.facebook.com', path: c.path || '/' }));
+      setParsedCookies(normalized);
+      const names = normalized.map((c: any) => c.name);
+      const ok = names.includes('c_user') && names.includes('xs');
+      if (ok) setMessage('✅ Facebook cookies detected'); else setMessage('Missing c_user and xs — cookies appear incomplete');
+      await (async () => {
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(pasted || '');
+          const digest = await window.crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(digest));
+          const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+          const short = hashHex.slice(0, 16);
+          setFingerprint(short);
+          setMasked(true);
+          setMaskedPreview(`Encrypted cookies •••• ${short}`);
+        } catch (e) {
+          setMaskedPreview(`Encrypted cookies •••• (${(pasted||'').length} chars)`);
+          setMasked(true);
+        }
+      })();
+      setStep(4);
+    } catch (err) {
       setMessage('Failed to parse cookies');
     }
   };
@@ -107,14 +182,14 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
   }, [checked, parsedCookies, step]);
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" PaperProps={{ style: { width: 560 } }}>
       <DialogTitle>
-        {step === 1 && 'Connect Facebook via Cookies (Optional)'}
+        {step === 1 && 'Connect Facebook via Cookies Needed For Analysis'}
         {step === 2 && 'Export Cookies from Facebook'}
         {step === 3 && 'Paste Cookies'}
         {step === 4 && 'Confirm Before Continuing'}
       </DialogTitle>
-      <DialogContent>
+      <DialogContent dividers sx={{ maxHeight: 420, overflowY: 'auto' }}>
         {step === 1 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography sx={{ fontWeight: 600 }}>You stay in control.</Typography>
@@ -151,10 +226,14 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
         {step === 3 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography>Paste the copied cookie data here…</Typography>
-            <TextField multiline minRows={6} placeholder="Paste the copied cookie data here…" value={cookieText} onChange={e => setCookieText(e.target.value)} fullWidth />
+            {!masked ? (
+              <TextField multiline minRows={6} placeholder="Paste the copied cookie data here…" value={cookieText} onChange={e => setCookieText(e.target.value)} onPaste={handlePaste} fullWidth />
+            ) : (
+              <TextField multiline minRows={6} value={maskedPreview || ''} fullWidth InputProps={{ readOnly: true }} />
+            )}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button variant="contained" onClick={handlePasteValidate}>Paste & Validate</Button>
-              <Button variant="outlined" onClick={() => { setCookieText(''); setParsedCookies(null); setMessage(null); }}>Clear</Button>
+              <Button variant="outlined" onClick={() => { setCookieText(''); setParsedCookies(null); setMessage(null); setMasked(false); setMaskedPreview(null); setFingerprint(null); }}>Clear</Button>
             </Box>
             {message && <Alert severity={message.includes('✅') ? 'success' : 'info'}>{message}</Alert>}
           </Box>
@@ -171,6 +250,9 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
             <Typography variant="caption" color="text.secondary">When all mandatory boxes are checked we will validate and save the cookies automatically.</Typography>
             {loading && <Typography>Submitting…</Typography>}
             {message && <Alert severity={message.includes('saved') ? 'success' : 'info'}>{message}</Alert>}
+            {masked && (
+              <Typography variant="caption" color="text.secondary">Preview: {maskedPreview} (actual content is encrypted on the server)</Typography>
+            )}
           </Box>
         )}
       </DialogContent>
