@@ -131,7 +131,9 @@ class ApiClient {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const err: any = new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        // Backend returns 'message' field for auth errors, check both 'message' and 'detail'
+        const errorMessage = errorData.message || errorData.detail || errorData.error || `HTTP error! status: ${response.status}`;
+        const err: any = new Error(errorMessage);
         err.status = response.status;
         err.data = errorData;
         err.url = url;
