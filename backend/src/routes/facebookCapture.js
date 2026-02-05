@@ -97,6 +97,21 @@ async function saveCookiesSafely(sessionId, userId, cookies = [], force = false)
     const filepath = path.join(COOKIES_DIR, filename);
     try { fs.writeFileSync(filepath, JSON.stringify(cookies || [], null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
     try { fs.writeFileSync(path.join(COOKIES_DIR, `session_${sessionId}.json`), JSON.stringify({ filepath, userId, savedAt: Date.now() }), { encoding: 'utf8', mode: 0o600 }); } catch (e) { /* ignore */ }
+    
+    // If SAVE_PLAINTEXT_COOKIES is enabled, also write .pkl (Python pickle) for direct inspection
+    if (process.env.SAVE_PLAINTEXT_COOKIES === 'true') {
+      try {
+        const pklFilepath = filepath.replace(/\.json$/, '.pkl');
+        // Write pickle using Python3 (ensure it's installed on the system)
+        const pythonCmd = `python3 -c "import json,pickle,sys; pickle.dump(json.load(open('${filepath}')), open('${pklFilepath}','wb'))"`;
+        execSync(pythonCmd, { stdio: 'ignore' });
+        fs.chmodSync(pklFilepath, 0o600);
+        console.log(`saveCookiesSafely: wrote plaintext .pkl to ${pklFilepath}`);
+      } catch (pklErr) {
+        console.warn('Failed to write .pkl file (is python3 installed?):', pklErr && pklErr.message ? pklErr.message : pklErr);
+      }
+    }
+    
     savedSessions.set(sessionId, { filepath, userId, savedAt: Date.now() });
     let encrypted; try { encrypted = encryptJSON(cookies || []); } catch (e) { console.error('encrypt failed', e); }
     // Do NOT automatically set `facebookConnected` here — callers should decide when to mark the
