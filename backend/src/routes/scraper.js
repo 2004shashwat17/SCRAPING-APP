@@ -1,8 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const scraperService = require('../services/scraperService');
+const { pushScrapeJob, getJobStatus: getRedisJobStatus, checkRedisHealth } = require('../services/jobService');
 const jwt = require('jsonwebtoken');
 const { spawn } = require('child_process');
+
+// Redis health check
+router.get('/redis/health', async (req, res) => {
+  try {
+    const health = await checkRedisHealth();
+    if (health.connected) {
+      res.json({ status: 'healthy', ...health });
+    } else {
+      res.status(503).json({ status: 'unhealthy', ...health });
+    }
+  } catch (error) {
+    res.status(503).json({ status: 'error', message: error.message });
+  }
+});
 
 // Get scraping job status
 router.get('/status/:jobId', async (req, res) => {
@@ -36,51 +51,67 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Start a scraper job (runs docker image and writes raw output to scraper_output/<userId>)
+// Start a scraper job (push to Redis queue - backend does NOT run scraping)
 router.post('/run', authenticateToken, async (req, res) => {
   try {
-    const fs = require('fs');
-    const path = require('path');
+    const { fbid, accessToken: accessTokenFromBody, cookieFile } = req.body || {};
+    if (!fbid && !cookieFile) {
+      return res.status(400).json({ error: 'Either fbid or cookieFile is required' });
+    }
 
-    const { fbid, accessToken: accessTokenFromBody } = req.body || {};
-    if (!fbid || !/^[0-9]+$/.test(String(fbid))) return res.status(400).json({ error: 'fbid numeric required' });
+    // Get user info for cookie filename
+    const User = require('../models/User');
+    const user = await User.findById(req.userId).select('username facebookAccessToken facebookCookiesPath');
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     // Prefer token from DB (saved during OAuth), fall back to provided token in body
     let accessToken = accessTokenFromBody;
-    if (!accessToken) {
-      try {
-        const User = require('../models/User');
-        const user = await User.findById(req.userId).select('facebookAccessToken');
-        if (user && user.facebookAccessToken) {
-          accessToken = user.facebookAccessToken;
-        }
-      } catch (e) {
-        console.error('Failed to load user token from DB:', e);
-      }
+    if (!accessToken && user.facebookAccessToken) {
+      accessToken = user.facebookAccessToken;
     }
 
-    if (!accessToken) return res.status(400).json({ error: 'accessToken required (provide in request or connect via OAuth)' });
+    // Determine cookie file path (from R2 or local)
+    let cookieFilePath = cookieFile;
+    if (!cookieFilePath && user.facebookCookiesPath) {
+      cookieFilePath = user.facebookCookiesPath;
+    }
+    
+    // If still no cookie file, generate username-based path
+    if (!cookieFilePath) {
+      cookieFilePath = user.username ? `${user.username}.json` : `${req.userId}.json`;
+    }
 
-    const userId = req.userId;
-    const scraperOutputDir = path.join(__dirname, '..', '..', 'scraper_output', String(userId));
-    fs.mkdirSync(scraperOutputDir, { recursive: true });
+    // Push job to Redis queue (backend only pushes - does NOT run scraping)
+    const jobResult = await pushScrapeJob({
+      cookieFile: cookieFilePath,
+      userId: req.userId,
+      username: user.username,
+      fbid: fbid ? String(fbid) : null,
+      accessToken: accessToken || null,
+    });
 
-    // Create a persistent Job record and queue it for processing by the worker
+    // Save job record in MongoDB for tracking
     const Job = require('../models/Job');
-    const jobId = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-    const statusFile = path.join(scraperOutputDir, `scrape.${jobId}.status.json`);
-    const startedAt = new Date().toISOString();
-
-    const statusPayload = { jobId, status: 'queued', fbid: String(fbid), queuedAt: startedAt, logs: [] };
-    try { fs.writeFileSync(statusFile, JSON.stringify(statusPayload, null, 2)); } catch (e) { console.error('Failed to write status file:', e); }
-
-    const jobDoc = new Job({ jobId, userId, fbid, status: 'queued', outputPath: scraperOutputDir });
+    const jobDoc = new Job({
+      jobId: jobResult.job_id,
+      userId: req.userId,
+      fbid: fbid ? String(fbid) : null,
+      status: 'queued',
+      outputPath: cookieFilePath,
+    });
     await jobDoc.save();
 
-    // Worker (running in background) will pick up queued jobs and run containers
-    return res.status(202).json({ jobId, statusUrl: `/api/scraper/job/${userId}/${jobId}`, message: 'Job queued' });
+    return res.status(202).json({
+      job_id: jobResult.job_id,
+      message: 'Job queued in Redis - worker will process it',
+      statusUrl: `/api/scraper/job/${req.userId}/${jobResult.job_id}`,
+    });
   } catch (err) {
-    return res.status(500).json({ error: String(err) });
+    console.error('Failed to queue scrape job:', err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
