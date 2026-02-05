@@ -5,6 +5,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { encryptJSON } = require('../utils/cryptoCookies');
+const { saveCookieToCloud, isCloudStorageEnabled } = require('../utils/cookieStorage');
 const mongoose = require('mongoose');
 const { authenticateToken } = require('./_auth_helper');
 const User = require('../models/User');
@@ -23,7 +24,8 @@ const TIMEOUT = parseInt(process.env.COOKIE_CAPTURE_TIMEOUT_MS || '45000', 10);
 // Maximum time to wait for a user to complete headful login/2FA/captcha (ms).
 // Can be overridden with env `MAX_CAPTURE_WAIT_MS`. Default: 15 minutes.
 const MAX_CAPTURE_WAIT_MS = parseInt(process.env.MAX_CAPTURE_WAIT_MS || String(15 * 60 * 1000), 10);
-const COOKIES_DIR = path.join(__dirname, '..', '..', 'cookies');
+// Cookie storage directory - can be overridden with COOKIE_DIR env var for cloud/volume storage
+const COOKIES_DIR = process.env.COOKIE_DIR || path.join(__dirname, '..', '..', 'cookies');
 
 if (!fs.existsSync(COOKIES_DIR)) {
   fs.mkdirSync(COOKIES_DIR, { recursive: true });
@@ -93,24 +95,44 @@ async function saveCookiesSafely(sessionId, userId, cookies = [], force = false)
       console.log(`facebookCapture: session=${sessionId} not saved — missing c_user/xs — saw: ${names.join(',')}`);
       return { saved: false };
     }
-    const filename = `${userId}_${Date.now()}.json`;
-    const filepath = path.join(COOKIES_DIR, filename);
-    try { fs.writeFileSync(filepath, JSON.stringify(cookies || [], null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
-    try { fs.writeFileSync(path.join(COOKIES_DIR, `session_${sessionId}.json`), JSON.stringify({ filepath, userId, savedAt: Date.now() }), { encoding: 'utf8', mode: 0o600 }); } catch (e) { /* ignore */ }
     
-    // If SAVE_PLAINTEXT_COOKIES is enabled, also write .pkl (Python pickle) for direct inspection
-    if (process.env.SAVE_PLAINTEXT_COOKIES === 'true') {
+    const filename = `${userId}_${Date.now()}.json`;
+    let filepath;
+    
+    // Check if cloud storage (Cloudflare R2) is enabled
+    if (isCloudStorageEnabled()) {
       try {
-        const pklFilepath = filepath.replace(/\.json$/, '.pkl');
-        // Write pickle using Python3 (ensure it's installed on the system)
-        const pythonCmd = `python3 -c "import json,pickle,sys; pickle.dump(json.load(open('${filepath}')), open('${pklFilepath}','wb'))"`;
-        execSync(pythonCmd, { stdio: 'ignore' });
-        fs.chmodSync(pklFilepath, 0o600);
-        console.log(`saveCookiesSafely: wrote plaintext .pkl to ${pklFilepath}`);
-      } catch (pklErr) {
-        console.warn('Failed to write .pkl file (is python3 installed?):', pklErr && pklErr.message ? pklErr.message : pklErr);
+        // Save to Cloudflare R2 (handles both .json and .pkl if SAVE_PLAINTEXT_COOKIES=true)
+        filepath = await saveCookieToCloud(filename, cookies || []);
+        console.log(`✅ Saved cookies to Cloudflare R2: ${filepath}`);
+      } catch (cloudErr) {
+        console.error('Failed to save to R2, falling back to local storage:', cloudErr.message);
+        // Fallback to local storage if R2 fails
+        filepath = path.join(COOKIES_DIR, filename);
+        try { fs.writeFileSync(filepath, JSON.stringify(cookies || [], null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
+      }
+    } else {
+      // Local filesystem storage (original behavior)
+      filepath = path.join(COOKIES_DIR, filename);
+      try { fs.writeFileSync(filepath, JSON.stringify(cookies || [], null, 2), { encoding: 'utf8', mode: 0o600 }); } catch (e) { console.error('Failed to write cookie file:', e); }
+      
+      // If SAVE_PLAINTEXT_COOKIES is enabled, also write .pkl (Python pickle) for direct inspection
+      if (process.env.SAVE_PLAINTEXT_COOKIES === 'true') {
+        try {
+          const pklFilepath = filepath.replace(/\.json$/, '.pkl');
+          // Write pickle using Python3 (ensure it's installed on the system)
+          const pythonCmd = `python3 -c "import json,pickle,sys; pickle.dump(json.load(open('${filepath}')), open('${pklFilepath}','wb'))"`;
+          execSync(pythonCmd, { stdio: 'ignore' });
+          fs.chmodSync(pklFilepath, 0o600);
+          console.log(`saveCookiesSafely: wrote plaintext .pkl to ${pklFilepath}`);
+        } catch (pklErr) {
+          console.warn('Failed to write .pkl file (is python3 installed?):', pklErr && pklErr.message ? pklErr.message : pklErr);
+        }
       }
     }
+    
+    // Save session metadata locally (small file, fast lookup)
+    try { fs.writeFileSync(path.join(COOKIES_DIR, `session_${sessionId}.json`), JSON.stringify({ filepath, userId, savedAt: Date.now() }), { encoding: 'utf8', mode: 0o600 }); } catch (e) { /* ignore */ }
     
     savedSessions.set(sessionId, { filepath, userId, savedAt: Date.now() });
     let encrypted; try { encrypted = encryptJSON(cookies || []); } catch (e) { console.error('encrypt failed', e); }

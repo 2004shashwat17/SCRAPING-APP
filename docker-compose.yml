@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"   # Backend API
+      - "6080:6080"   # noVNC web interface
+      - "5900:5900"   # VNC port
+    environment:
+      - PORT=8080
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - COOKIE_ENCRYPTION_KEY=${COOKIE_ENCRYPTION_KEY}
+      - SAVE_PLAINTEXT_COOKIES=${SAVE_PLAINTEXT_COOKIES:-true}
+      - NODE_ENV=${NODE_ENV:-production}
+      # Optional: override cookie storage location
+      # - COOKIE_DIR=/app/backend/cookies
+    volumes:
+      # Persist cookies across container restarts
+      - ./backend/cookies:/app/backend/cookies
+      # Persist scraper output
+      - ./scraper_output:/app/scraper_output
+      # Persist data (geocode cache, etc)
+      - ./backend/data:/app/backend/data
+    restart: unless-stopped
+    # Uncomment if you need to run as specific user
+    # user: "${UID:-1000}:${GID:-1000}"
+
+  # Optional: MongoDB service (if not using cloud MongoDB)
+  # mongodb:
+  #   image: mongo:7
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-admin}
+  #     - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-changeme}
+  #   restart: unless-stopped
+
+# volumes:
+#   mongodb_data:
