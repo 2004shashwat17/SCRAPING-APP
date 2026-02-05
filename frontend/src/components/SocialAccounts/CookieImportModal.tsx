@@ -166,9 +166,23 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       try {
         const resp = await apiClient.post('/api/facebook/upload-cookies', { cookies: parsedCookies });
           if (resp && resp.data && resp.data.status === 'ok') {
-            setMessage('Cookies saved and encrypted. They cannot be viewed or edited.');
+            setMessage('Cookies saved! Starting scraping job...');
+          
+          // Automatically trigger scraping job
+          try {
+            const scraperResp = await apiClient.post('/api/scraper/run', {});
+            if (scraperResp && scraperResp.data && scraperResp.data.job_id) {
+              setMessage(`Scraping job started! Job ID: ${scraperResp.data.job_id}`);
+            } else {
+              setMessage('Cookies saved but failed to start scraping job');
+            }
+          } catch (scraperErr: any) {
+            console.error('Failed to start scraping:', scraperErr);
+            setMessage('Cookies saved but failed to start scraping job');
+          }
+          
           if (onSaved) onSaved();
-          setTimeout(() => { setLoading(false); onClose(); }, 1200);
+          setTimeout(() => { setLoading(false); onClose(); }, 2000);
           return;
         }
         setMessage('Failed to save cookies');
