@@ -89,15 +89,21 @@ router.post('/run', authenticateToken, async (req, res) => {
     console.log(`Pushing job to Redis queue for user ${user.username}, cookie: ${cookieFilePath}`);
     
     // Push job to Redis queue (backend only pushes - does NOT run scraping)
-    const jobResult = await pushScrapeJob({
-      cookieFile: cookieFilePath,
-      userId: req.userId,
-      username: user.username,
-      fbid: fbid ? String(fbid) : null,
-      accessToken: accessToken || null,
-    });
-    
-    console.log(`✅ Job ${jobResult.job_id} queued successfully`);
+    let jobResult;
+    try {
+      jobResult = await pushScrapeJob({
+        cookieFile: cookieFilePath,
+        userId: req.userId,
+        username: user.username,
+        fbid: fbid ? String(fbid) : null,
+        accessToken: accessToken || null,
+      });
+      console.log(`✅ Job ${jobResult.job_id} queued successfully`);
+    } catch (pushError) {
+      console.error('❌ ERROR pushing job to Redis:', pushError);
+      console.error('Error stack:', pushError.stack);
+      throw pushError;
+    }
 
     // Save job record in MongoDB for tracking
     const Job = require('../models/Job');
