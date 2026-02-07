@@ -19,6 +19,37 @@ router.get('/redis/health', async (req, res) => {
   }
 });
 
+// TEST ENDPOINT: Push a test job without auth
+router.post('/test-push', async (req, res) => {
+  try {
+    console.log('🧪 TEST: Pushing test job to Redis...');
+    const testJob = {
+      cookieFile: 'test.json',
+      userId: 'test-user',
+      username: 'test',
+      fbid: null,
+      accessToken: null,
+    };
+    
+    const result = await pushScrapeJob(testJob);
+    console.log('🧪 TEST: Job pushed successfully:', result);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Test job pushed successfully',
+      result 
+    });
+  } catch (error) {
+    console.error('🧪 TEST FAILED:', error);
+    console.error('Error stack:', error.stack);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      stack: error.stack 
+    });
+  }
+});
+
 // Get scraping job status
 router.get('/status/:jobId', async (req, res) => {
   try {
