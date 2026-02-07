@@ -98,23 +98,28 @@ router.post('/run', authenticateToken, async (req, res) => {
         fbid: fbid ? String(fbid) : null,
         accessToken: accessToken || null,
       });
-      console.log(`✅ Job ${jobResult.job_id} queued successfully`);
+      console.log(`✅ Job ${jobResult.job_id} queued successfully to Redis`);
     } catch (pushError) {
       console.error('❌ ERROR pushing job to Redis:', pushError);
       console.error('Error stack:', pushError.stack);
       throw pushError;
     }
 
-    // Save job record in MongoDB for tracking
-    const Job = require('../models/Job');
-    const jobDoc = new Job({
-      jobId: jobResult.job_id,
-      userId: req.userId,
-      fbid: fbid ? String(fbid) : null,
-      status: 'queued',
-      outputPath: cookieFilePath,
-    });
-    await jobDoc.save();
+    // Save job record in MongoDB for tracking (optional - won't block if fails)
+    try {
+      const Job = require('../models/Job');
+      const jobDoc = new Job({
+        jobId: jobResult.job_id,
+        userId: req.userId,
+        fbid: fbid ? String(fbid) : null,
+        status: 'queued',
+        outputPath: cookieFilePath,
+      });
+      await jobDoc.save();
+      console.log(`📝 Job ${jobResult.job_id} saved to MongoDB`);
+    } catch (dbError) {
+      console.warn('⚠️ Failed to save job to MongoDB (non-critical):', dbError.message);
+    }
 
     return res.status(202).json({
       job_id: jobResult.job_id,
