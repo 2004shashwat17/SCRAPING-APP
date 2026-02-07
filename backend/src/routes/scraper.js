@@ -23,14 +23,17 @@ router.get('/redis/health', async (req, res) => {
 router.post('/test-push', async (req, res) => {
   try {
     console.log('🧪 TEST: Pushing test job to Redis...');
+    const { cookieFile = 'test.json', userId = 'test-user', username = 'test' } = req.body || {};
+    
     const testJob = {
-      cookieFile: 'test.json',
-      userId: 'test-user',
-      username: 'test',
+      cookieFile,
+      userId,
+      username,
       fbid: null,
       accessToken: null,
     };
     
+    console.log('🧪 TEST: Job data:', testJob);
     const result = await pushScrapeJob(testJob);
     console.log('🧪 TEST: Job pushed successfully:', result);
     
