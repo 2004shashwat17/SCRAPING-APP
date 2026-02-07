@@ -54,6 +54,7 @@ const authenticateToken = (req, res, next) => {
 // Start a scraper job (push to Redis queue - backend does NOT run scraping)
 router.post('/run', authenticateToken, async (req, res) => {
   try {
+    console.log('[POST] /api/scraper/run - Starting job queue...');
     const { fbid, accessToken: accessTokenFromBody, cookieFile } = req.body || {};
     if (!fbid && !cookieFile) {
       return res.status(400).json({ error: 'Either fbid or cookieFile is required' });
@@ -62,6 +63,7 @@ router.post('/run', authenticateToken, async (req, res) => {
     // Get user info for cookie filename
     const User = require('../models/User');
     const user = await User.findById(req.userId).select('username facebookAccessToken facebookCookiesPath');
+    console.log(`Found user: ${user?.username || req.userId}`);
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -84,6 +86,8 @@ router.post('/run', authenticateToken, async (req, res) => {
       cookieFilePath = user.username ? `${user.username}.json` : `${req.userId}.json`;
     }
 
+    console.log(`Pushing job to Redis queue for user ${user.username}, cookie: ${cookieFilePath}`);
+    
     // Push job to Redis queue (backend only pushes - does NOT run scraping)
     const jobResult = await pushScrapeJob({
       cookieFile: cookieFilePath,
@@ -92,6 +96,8 @@ router.post('/run', authenticateToken, async (req, res) => {
       fbid: fbid ? String(fbid) : null,
       accessToken: accessToken || null,
     });
+    
+    console.log(`✅ Job ${jobResult.job_id} queued successfully`);
 
     // Save job record in MongoDB for tracking
     const Job = require('../models/Job');
