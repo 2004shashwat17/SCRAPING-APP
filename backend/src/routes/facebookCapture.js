@@ -42,8 +42,8 @@ async function saveCookiesSafely(sessionId, userId, cookies = [], force = false)
       console.warn('Failed to fetch username, using userId as filename:', err.message);
     }
     
-    // Use username_latest.json format (always overwrites with latest version)
-    const filename = `${username}_latest.json`;
+    // Use username.json format to match job queue expectations
+    const filename = `${username}.json`;
     let filepath;
     
     // Check if cloud storage (Cloudflare R2) is enabled
