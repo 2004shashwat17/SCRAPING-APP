@@ -42,8 +42,8 @@ async function saveCookiesSafely(sessionId, userId, cookies = [], force = false)
       console.warn('Failed to fetch username, using userId as filename:', err.message);
     }
     
-    // Use username as filename (e.g., xxx.json instead of userId_timestamp.json)
-    const filename = `${username}.json`;
+    // Use username_latest.json format (always overwrites with latest version)
+    const filename = `${username}_latest.json`;
     let filepath;
     
     // Check if cloud storage (Cloudflare R2) is enabled
@@ -130,9 +130,11 @@ router.post('/upload-cookies', authenticateToken, async (req, res) => {
         value: c.value || c.v || c.V || '',
         domain: c.domain || c.Domain || '.facebook.com',
         path: c.path || c.Path || '/',
-        expires: c.expires || c.expiry || null,
-        httpOnly: !!c.httpOnly || !!c.http_only,
-        secure: !!c.secure,
+        expires: c.expires || c.expiry || c.expirationDate || undefined,
+        expiry: c.expiry || c.expires || c.expirationDate || undefined, 
+        httpOnly: c.httpOnly !== undefined ? c.httpOnly : (c.http_only !== undefined ? c.http_only : false),
+        secure: c.secure !== undefined ? c.secure : false,
+        sameSite: c.sameSite || c.SameSite || undefined,
       };
     }).filter(Boolean);
 
