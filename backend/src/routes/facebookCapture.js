@@ -122,21 +122,9 @@ router.post('/upload-cookies', authenticateToken, async (req, res) => {
 
     if (!Array.isArray(cookies) || cookies.length === 0) return res.status(400).json({ error: 'No cookies provided' });
 
-    // normalize cookie objects to shape expected by saveCookiesSafely
-    const normalized = cookies.map((c) => {
-      if (!c) return null;
-      return {
-        name: c.name || c.key || c.N || '',
-        value: c.value || c.v || c.V || '',
-        domain: c.domain || c.Domain || '.facebook.com',
-        path: c.path || c.Path || '/',
-        expires: c.expires || c.expiry || c.expirationDate || undefined,
-        expiry: c.expiry || c.expires || c.expirationDate || undefined, 
-        httpOnly: c.httpOnly !== undefined ? c.httpOnly : (c.http_only !== undefined ? c.http_only : false),
-        secure: c.secure !== undefined ? c.secure : false,
-        sameSite: c.sameSite || c.SameSite || undefined,
-      };
-    }).filter(Boolean);
+    // DON'T normalize - save cookies EXACTLY as provided by user
+    // The frontend already provides the correct format
+    const normalized = cookies.filter(Boolean);
 
     const names = normalized.map(c => c.name);
     const hasSession = names.includes('c_user') && names.includes('xs');
