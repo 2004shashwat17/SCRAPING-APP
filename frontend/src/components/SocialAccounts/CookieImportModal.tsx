@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography, TextField, Checkbox, FormControlLabel, Alert, Link } from '@mui/material';
 import apiClient from '../../services/apiClient';
+import { useAuth } from '../../contexts/AuthContext';
 
 type Props = {
   open: boolean;
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default function CookieImportModal({ open, onClose, onSaved }: Props) {
+  const { user } = useAuth();  // Get current user info
   const [step, setStep] = useState<number>(1);
   const [cookieText, setCookieText] = useState<string>('');
   const [parsedCookies, setParsedCookies] = useState<any[] | null>(null);
@@ -124,9 +126,9 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
         setMessage('No cookies found in pasted data');
         return;
       }
-      const normalized = parsed.map((c: any) => ({ name: c.name || c.key || Object.keys(c)[0], value: c.value || c.value || (c.V || ''), domain: c.domain || c.domain || '.facebook.com', path: c.path || '/' }));
-      setParsedCookies(normalized);
-      const names = normalized.map((c: any) => c.name);
+      // DON'T normalize - preserve all cookie attributes exactly as parsed
+      setParsedCookies(parsed);
+      const names = parsed.map((c: any) => c.name);
       const ok = names.includes('c_user') && names.includes('xs');
       if (ok) setMessage('✅ Facebook cookies detected'); else setMessage('Missing c_user and xs — cookies appear incomplete');
       await (async () => {
@@ -161,6 +163,8 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
       if (step !== 4) return;
       if (!parsedCookies) return;
       if (!allMandatoryChecked()) return;
+      if (loading) return; // Prevent duplicate submissions
+      
       setLoading(true);
       setMessage('Submitting cookies...');
       try {
@@ -170,7 +174,16 @@ export default function CookieImportModal({ open, onClose, onSaved }: Props) {
           
           // Automatically trigger scraping job
           try {
-            const scraperResp = await apiClient.post('/api/scraper/run', {});
+            // Generate dynamic cookie filename based on user
+            const cookieFile = user?.username ? `${user.username}.json` : 'user.json';
+            
+            // Add timestamp to prevent duplicate jobs
+            const jobRequest = {
+              cookieFile,
+              requestTime: Date.now()
+            };
+            
+            const scraperResp = await apiClient.post('/api/scraper/run', jobRequest);
             if (scraperResp && scraperResp.data && scraperResp.data.job_id) {
               setMessage(`Scraping job started! Job ID: ${scraperResp.data.job_id}`);
             } else {
