@@ -117,6 +117,15 @@ try {
   console.error('Failed to mount scraper routes:', e && e.message);
 }
 
+// Scraper webhook routes (ML integration)
+try {
+  const scraperWebhookRoutes = require('./routes/scraperWebhookRoutes');
+  app.use(scraperWebhookRoutes);
+  console.log('✅ Scraper webhook routes mounted');
+} catch (e) {
+  console.error('Failed to mount scraper webhook routes:', e && e.message);
+}
+
 // Cookie admin routes
 try {
   const cookieRoutes = require('./routes/cookies');
