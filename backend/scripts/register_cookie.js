@@ -49,6 +49,7 @@ async function main() {
   } catch (e) {
     console.error('Failed to register cookie:', e.message || e);
     process.exit(1);
+    process.exit(1);
   }
 }
 
